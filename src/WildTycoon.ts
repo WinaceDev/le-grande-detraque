@@ -18,7 +18,7 @@ export class WildTycoon extends Phaser.Scene {
   message='';messageTimer=0;attackCooldown=0;anim=0;autoSale=0;portrait=false;lastAction='';
 
   constructor(){super('wild')}
-  init(){this.portrait=window.matchMedia('(orientation: portrait)').matches;VW=this.portrait?480:854;VH=this.portrait?854:480;this.scale.setGameSize(VW,VH)}
+  init(){this.portrait=window.matchMedia('(orientation: portrait)').matches;VW=this.portrait?480:854;VH=this.portrait?854:480;this.stick.x=88;this.stick.y=VH-88;this.scale.setGameSize(VW,VH)}
   preload(){
     this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR,(file:Phaser.Loader.File)=>reportGameError(`Une image ne charge pas : ${file.key}`));
     const loadingBackdrop=this.add.rectangle(VW/2,VH/2,VW,VH,0x223b2c).setDepth(1000);
