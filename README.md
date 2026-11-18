@@ -1,13 +1,11 @@
 # Le Grand Détraqué
 
-Deux jeux mobiles originaux, jouables dans le navigateur :
+Deux jeux mobiles indépendants, réunis dans un écran de lancement :
 
-- **Le Grand Détraqué** — combat de boss en portrait, trois mondes.
-- **Wild Meat Tycoon** — exploration et commerce en paysage.
+- **Le Grand Détraqué** — combat de boss en 2D, style théâtre 1930.
+- **Wild Meat Tycoon** — aventure en 3D à la troisième personne : explore la forêt, chasse, ramasse les ressources, transforme-les à l’atelier et vends-les pour développer ton camp.
 
-Au lancement, choisis le jeu. Le navigateur demande le plein écran et le verrouillage de l’orientation au premier toucher. Si le navigateur ne peut pas tourner l’écran automatiquement, tourne le téléphone manuellement.
-
-Wild Meat Tycoon se joue au joystick à gauche et avec le bouton d’action à droite. Approche les animaux pour les chasser, ramasse les caisses de viande, transforme-les à l’atelier et vends tes produits au marché. Les améliorations et l’argent sont conservés sur l’appareil.
+Wild Meat Tycoon comprend un monde forestier avec rivière, pont, camp, animaux et Hautes Terres à débloquer. Un guide d’objectifs accompagne la première boucle de jeu. Le joystick et le bouton d’action fonctionnent en portrait comme en paysage; le clavier fonctionne aussi sur ordinateur.
 
 ## Développement
 

@@ -1,224 +1,169 @@
 import Phaser from 'phaser';
+import * as THREE from 'three';
 import { reportGameError } from './diagnostics';
+import './wild-tycoon.css';
 
-let VW=854,VH=480;const SAVE_KEY='wild-meat-tycoon-v1';
-type Animal={x:number;z:number;kind:'bear'|'deer';hp:number;alive:boolean;vx:number;vz:number;bob:number;sprite?:Phaser.GameObjects.Image};
-type Drop={x:number;z:number;count:number;phase:number};
-type Save={money:number;bag:number;products:number;capacity:number;speedLevel:number;toolLevel:number;workers:number;highlands:boolean};
+type AnimalKind='bear'|'deer';
+type Animal={kind:AnimalKind;root:THREE.Group;legs:THREE.Group[];hp:number;alive:boolean;phase:number;home:THREE.Vector3};
+type Drop={root:THREE.Group;amount:number};
+type Save={money:number;bag:number;products:number;capacity:number;speed:number;tool:number;workers:number;highlands:boolean};
+type TutorialStep={title:string;body:string;target?:THREE.Vector3;action?:string};
+
+const SAVE_KEY='wild-meat-tycoon-3d-v1';
 
 export class WildTycoon extends Phaser.Scene {
-  world!:Phaser.GameObjects.Graphics; background!:Phaser.GameObjects.Image; hero!:Phaser.GameObjects.Image;
-  bearTexture='wild-bear'; rangerTexture='wild-ranger';
-  player={x:0,z:-90,vx:0,vz:0,face:1,speed:170,anim:0,moving:false};
-  save:Save={money:0,bag:0,products:0,capacity:5,speedLevel:0,toolLevel:0,workers:0,highlands:false};
-  animals:Animal[]=[]; drops:Drop[]=[]; trees:{x:number;z:number;size:number;pine:boolean}[]=[];
-  keys!:Phaser.Input.Keyboard.KeyboardPlugin; held=new Set<string>();
-  stick={id:null as number|null,x:88,y:392,dx:0,dy:0};
-  hud!:Phaser.GameObjects.Text; actionText!:Phaser.GameObjects.Text; messageText!:Phaser.GameObjects.Text; rotateText!:Phaser.GameObjects.Text; rotateShade!:Phaser.GameObjects.Graphics; backText!:Phaser.GameObjects.Text; stickText!:Phaser.GameObjects.Text; stationLabels:Phaser.GameObjects.Text[]=[];
-  message='';messageTimer=0;attackCooldown=0;anim=0;autoSale=0;portrait=false;lastAction='';
+  root!:HTMLDivElement;threeRenderer!:THREE.WebGLRenderer;world!:THREE.Scene;camera!:THREE.PerspectiveCamera;clock=new THREE.Clock();
+  player!:THREE.Group;legs:THREE.Group[]=[];animals:Animal[]=[];drops:Drop[]=[];trees:THREE.Group[]=[];targetRing!:THREE.Mesh;
+  gate?:THREE.Group;
+  save:Save={money:0,bag:0,products:0,capacity:5,speed:0,tool:0,workers:0,highlands:false};
+  held=new Set<string>();stick={id:-1,x:0,y:0};move={x:0,z:0};tutorialStep=0;attackCooldown=0;elapsed=0;lastHud=0;messageUntil=0;message='';autoSale=0;respawnTimer=0;cleaned=false;
+  hud!:HTMLElement;guide!:HTMLElement;actionButton!:HTMLButtonElement;joystick!:HTMLElement;joystickKnob!:HTMLElement;messageBox!:HTMLElement;
+  onResize=()=>this.resize3D();onKeyDown=(e:KeyboardEvent)=>this.keyDown(e);onKeyUp=(e:KeyboardEvent)=>this.held.delete(e.key.toLowerCase());onVisibility=()=>{if(document.hidden)this.clock.stop();else this.clock.start()};
+  steps:TutorialStep[]=[];
 
   constructor(){super('wild')}
-  init(){this.portrait=window.matchMedia('(orientation: portrait)').matches;VW=this.portrait?480:854;VH=this.portrait?854:480;this.stick.x=88;this.stick.y=VH-88;this.scale.setGameSize(VW,VH)}
-  preload(){
-    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR,(file:Phaser.Loader.File)=>reportGameError(`Une image ne charge pas : ${file.key}`));
-    const loadingBackdrop=this.add.rectangle(VW/2,VH/2,VW,VH,0x223b2c).setDepth(1000);
-    const loading=this.add.text(VW/2,VH/2-30,'PRÉPARATION DE L’AVENTURE',{fontFamily:'Trebuchet MS',fontSize:'23px',fontStyle:'bold',color:'#fff1ce',stroke:'#263321',strokeThickness:5}).setOrigin(.5).setDepth(1001);
-    const bar=this.add.graphics().setDepth(1001);
-    const onProgress=(value:number)=>{bar.clear();bar.fillStyle(0x15251b,.8);bar.fillRoundedRect(VW/2-170,VH/2+10,340,20,10);bar.fillStyle(0xe6c878,1);bar.fillRoundedRect(VW/2-166,VH/2+14,332*value,12,6)};
-    this.load.on(Phaser.Loader.Events.PROGRESS,onProgress);
-    this.load.once(Phaser.Loader.Events.COMPLETE,()=>{this.load.off(Phaser.Loader.Events.PROGRESS,onProgress);loading.destroy();bar.destroy();loadingBackdrop.destroy()});
-    if(!this.textures.exists('wild-bg'))this.load.image('wild-bg',new URL('./assets/wild-clearing-wide.png',import.meta.url).href);
-    if(!this.textures.exists(this.rangerTexture))this.load.image(this.rangerTexture,new URL('./assets/wild-ranger.png',import.meta.url).href);
-    if(!this.textures.exists(this.bearTexture))this.load.image(this.bearTexture,new URL('./assets/wild-bear.png',import.meta.url).href);
-    if(!this.textures.exists('wild-deer'))this.load.image('wild-deer',new URL('./assets/wild-deer.png',import.meta.url).href);
-  }
+  preload(){}
+  init(){this.save=this.loadSave();this.held.clear();this.animals=[];this.drops=[];this.trees=[];this.legs=[];this.tutorialStep=0;this.elapsed=0;this.autoSale=0;this.respawnTimer=0;this.cleaned=false;this.clock=new THREE.Clock()}
   create(){
-    this.loadSave();
-    this.background=this.add.image(VW/2,VH/2,'wild-bg').setDisplaySize(VW,VH).setDepth(-20);
-    this.world=this.add.graphics().setScrollFactor(0).setDepth(5);
-    this.hero=this.add.image(VW/2,VH*.67,this.rangerTexture).setOrigin(.5,.88).setDisplaySize(112,168).setDepth(180);
-    this.makeMap();this.spawnAnimals();
-    this.keys=this.input.keyboard!;this.input.addPointer(4);
-    this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>this.pointerDown(p));
-    this.input.on('pointermove',(p:Phaser.Input.Pointer)=>this.pointerMove(p));
-    this.input.on('pointerup',(p:Phaser.Input.Pointer)=>this.pointerUp(p));
-    this.input.on('pointerupoutside',(p:Phaser.Input.Pointer)=>this.pointerUp(p));
-    this.input.keyboard?.on('keydown',(e:KeyboardEvent)=>this.keyDown(e));
-    this.input.keyboard?.on('keyup',(e:KeyboardEvent)=>this.held.delete(e.key.toLowerCase()));
-    this.hud=this.add.text(20,16,'',{fontFamily:'Trebuchet MS',fontSize:'19px',color:'#fff5d7',stroke:'#24341d',strokeThickness:4}).setDepth(300).setScrollFactor(0);
-    this.stationLabels=['ATELIER','MARCHÉ','ÉQUIPEMENT'].map(label=>this.add.text(0,0,label,{fontFamily:'Trebuchet MS',fontSize:'12px',fontStyle:'bold',color:'#fff2ca',stroke:'#3d3423',strokeThickness:3}).setOrigin(.5).setDepth(310).setScrollFactor(0));
-    this.actionText=this.add.text(VW-94,VH-88,'EXPLORER',{fontFamily:'Trebuchet MS',fontSize:'15px',fontStyle:'bold',color:'#fff7df',align:'center',wordWrap:{width:114},stroke:'#593c20',strokeThickness:3}).setOrigin(.5).setDepth(301).setScrollFactor(0);
-    this.messageText=this.add.text(VW/2,VH-180,'',{fontFamily:'Trebuchet MS',fontSize:'17px',fontStyle:'bold',color:'#fff7df',align:'center',stroke:'#25321d',strokeThickness:4}).setOrigin(.5).setDepth(301).setScrollFactor(0);
-    this.rotateShade=this.add.graphics().setDepth(490).setScrollFactor(0);
-    this.rotateText=this.add.text(VW/2,VH/2,'TOURNE TON TÉLÉPHONE\nÀ L’HORIZONTALE',{fontFamily:'Trebuchet MS',fontSize:'42px',fontStyle:'bold',color:'#fff7df',align:'center',stroke:'#284126',strokeThickness:6}).setOrigin(.5).setDepth(500).setScrollFactor(0).setVisible(false);
-    this.backText=this.add.text(53,34,'MENU',{fontFamily:'Trebuchet MS',fontSize:'11px',fontStyle:'bold',color:'#fff7df',align:'center',stroke:'#23331f',strokeThickness:3}).setOrigin(.5).setDepth(301).setScrollFactor(0);
-    this.stickText=this.add.text(88,VH-176,'GLISSE',{fontFamily:'Trebuchet MS',fontSize:'12px',fontStyle:'bold',color:'#fff7df',align:'center',stroke:'#23331f',strokeThickness:3}).setOrigin(.5).setDepth(301).setScrollFactor(0);
-    this.events.on('destroy',()=>this.saveGame());
-    const onOrientation=()=>this.checkOrientation();
-    this.scale.on('resize',onOrientation);window.addEventListener('orientationchange',onOrientation);
-    this.events.once('shutdown',()=>{this.scale.off('resize',onOrientation);window.removeEventListener('orientationchange',onOrientation)});
-    this.checkOrientation();
-    this.showMessage('Explore la forêt. Approche un animal et touche CHASSER.');
-    document.body.dataset.wildState='ready';
-  }
-
-  loadSave(){try{const raw=localStorage.getItem(SAVE_KEY);if(raw){const s=JSON.parse(raw) as Partial<Save>;this.save={...this.save,...s};this.save.money=Math.max(0,Number(this.save.money)||0);this.player.speed=170+this.save.speedLevel*25}}catch{/* Storage can be unavailable in private browsing. */}}
-  saveGame(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(this.save))}catch{/* The game stays playable without persistence. */}}
-  makeMap(){
-    let seed=73;const rand=()=>{seed=(seed*9301+49297)%233280;return seed/233280};
-    for(let i=0;i<155;i++){const x=(rand()-.5)*2100,z=-520+rand()*2700;if(Math.abs(x)>210||z<20)this.trees.push({x,z,size:38+rand()*38,pine:rand()>.22})}
-  }
-  spawnAnimals(){
-    if(!this.animals.some(a=>a.kind==='bear'))for(let i=0;i<9;i++)this.animals.push(this.makeAnimal({x:(i%2?1:-1)*(130+((i*97)%450)),z:260+i*92,kind:'bear',hp:2+this.save.toolLevel,alive:true,vx:0,vz:0,bob:i}));
-    if(this.save.highlands&&!this.animals.some(a=>a.kind==='deer'))for(let i=0;i<6;i++)this.animals.push(this.makeAnimal({x:(i%2?1:-1)*(190+i*55),z:1190+i*125,kind:'deer',hp:1+this.save.toolLevel,alive:true,vx:0,vz:0,bob:i+12}));
-  }
-  makeAnimal(animal:Animal){animal.sprite=this.add.image(0,0,animal.kind==='deer'?'wild-deer':this.bearTexture).setOrigin(.5,.9).setVisible(false).setDepth(200);return animal}
-  pointerDown(p:Phaser.Input.Pointer){
-    const x=p.x,y=p.y;
-    if(x<90&&y<70){this.backToMenu();return}
-    if(x<180&&y>VH-180){this.stick.id=p.id;this.pointerMove(p);return}
-    if(x>VW-165&&y>VH-170)this.performAction();
-  }
-  pointerMove(p:Phaser.Input.Pointer){if(this.stick.id!==p.id)return;const dx=(p.x-this.stick.x)/58,dy=(p.y-this.stick.y)/58,len=Math.hypot(dx,dy)||1,k=Math.max(1,len);this.stick.dx=dx/k;this.stick.dy=dy/k}
-  pointerUp(p:Phaser.Input.Pointer){if(this.stick.id===p.id){this.stick.id=null;this.stick.dx=0;this.stick.dy=0}}
-  keyDown(e:KeyboardEvent){const k=e.key.toLowerCase();if(k==='escape'||k==='backspace'){this.backToMenu();return}this.held.add(k);if(k==='e'||k===' '){e.preventDefault();this.performAction()}}
-  backToMenu(){this.saveGame();this.scale.setGameSize(480,854);this.requestDisplay('portrait');this.scene.start('theatre')}
-  requestDisplay(orientation:'portrait'|'landscape'){
-    const lock=()=>{
-      try{
-        const screenOrientation=screen.orientation as unknown as {lock?:(value:'portrait'|'landscape')=>Promise<void>};
-        const result=screenOrientation?.lock?.(orientation);if(result)void result.catch(()=>undefined);
-      }catch{/* Orientation locking is not available in every mobile browser. */}
-    };
     try{
-      const request=document.documentElement.requestFullscreen?.();
-      if(request)void request.then(lock).catch(lock);else lock();
-    }catch{/* Fullscreen is optional; it must never stop the game from starting. */lock()}
+      this.root=document.createElement('div');this.root.className='wild3d';this.root.innerHTML=`
+        <div class="w3d-top"><div class="w3d-brand"><span class="w3d-mark">🌲</span><span><b>WILD MEAT</b><small>TYCOON · FRONTIERA NORD</small></span></div><button class="w3d-menu" type="button">☰</button></div>
+        <div class="w3d-stats"><span>🪙 <b data-money>0</b></span><span>🧺 <b data-bag>0/5</b></span><span>📦 <b data-products>0</b></span></div>
+        <section class="w3d-guide"><div class="w3d-guide-head"><span>GUIDA D’AVVENTURA</span><span data-step>1 / 7</span></div><b data-guide-title>Esplora la foresta</b><p data-guide-body>Muovi il joystick per raggiungere l’orso vicino al sentiero.</p><div class="w3d-progress"><i data-progress></i></div></section>
+        <div class="w3d-toast" aria-live="polite"></div>
+        <div class="w3d-left-hint">GLISSE POUR<br>EXPLORER</div>
+        <div class="w3d-stick"><i></i></div>
+        <button class="w3d-action" type="button"><span>✦</span><b>EXPLORER</b></button>
+        <button class="w3d-guide-toggle" type="button">GUIDE</button>
+        <div class="w3d-controls-hint">DÉPLACEMENT : JOYSTICK · ACTION : BOUTON DORÉ</div>`;
+      document.body.appendChild(this.root);
+      this.game.canvas.style.display='none';
+      this.hud=this.root.querySelector('.w3d-stats')!;this.guide=this.root.querySelector('.w3d-guide')!;
+      this.actionButton=this.root.querySelector('.w3d-action')!;this.joystick=this.root.querySelector('.w3d-stick')!;this.joystickKnob=this.joystick.querySelector('i')!;this.messageBox=this.root.querySelector('.w3d-toast')!;
+      this.root.querySelector('.w3d-menu')!.addEventListener('click',()=>this.backToMenu());
+      this.root.querySelector('.w3d-guide-toggle')!.addEventListener('click',()=>this.guide.classList.toggle('w3d-guide-open'));
+      this.actionButton.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();this.performAction()});
+      this.joystick.addEventListener('pointerdown',e=>this.stickDown(e));this.joystick.addEventListener('pointermove',e=>this.stickMove(e));
+      this.joystick.addEventListener('pointerup',e=>this.stickUp(e));this.joystick.addEventListener('pointercancel',e=>this.stickUp(e));
+      window.addEventListener('keydown',this.onKeyDown);window.addEventListener('keyup',this.onKeyUp);window.addEventListener('resize',this.onResize);window.addEventListener('orientationchange',this.onResize);document.addEventListener('visibilitychange',this.onVisibility);
+      this.events.once('shutdown',()=>this.cleanup());
+      this.build3DWorld();this.buildTutorial();this.resize3D();this.updateGuide();this.updateHud();
+      document.body.dataset.wildState='ready';this.clock.start();this.animate();
+    }catch(error){reportGameError(`Échec de création du monde 3D : ${error instanceof Error?error.message:String(error)}`)}
   }
-  checkOrientation(){
-    const portrait=window.matchMedia('(orientation: portrait)').matches,width=portrait?480:854,height=portrait?854:480,changed=width!==VW||height!==VH;
-    this.portrait=portrait;if(!changed)return;VW=width;VH=height;
-    if(this.scale.gameSize.width!==VW||this.scale.gameSize.height!==VH)this.scale.setGameSize(VW,VH);
-    if(this.background)this.background.setPosition(VW/2-this.player.x*.012,VH/2+this.player.z*.008).setDisplaySize(VW,VH);
-    if(this.hero)this.hero.setPosition(VW/2+this.player.x*-.015,VH*.67);
-    if(this.messageText)this.messageText.setPosition(VW/2,VH-180);
-    if(this.actionText)this.actionText.setPosition(VW-94,VH-88);
-    if(this.stickText)this.stickText.setPosition(88,VH-176);
-    this.stick.x=88;this.stick.y=VH-88;
-    this.rotateText?.setVisible(false);
-  }
-  showMessage(message:string){this.message=message;this.messageTimer=2.3;if(this.messageText)this.messageText.setText(message)}
 
-  project(x:number,z:number){
-    const dz=z-this.player.z,scale=Phaser.Math.Clamp(1/(1+Math.max(0,dz)/1500),.48,1.2);
-    return{x:VW/2+(x-this.player.x)*.38*scale,y:VH*.67-dz*.24*scale,scale};
+  loadSave():Save{try{const raw=localStorage.getItem(SAVE_KEY);if(raw){const s=JSON.parse(raw) as Partial<Save>;return{money:Math.max(0,Number(s.money)||0),bag:Math.max(0,Number(s.bag)||0),products:Math.max(0,Number(s.products)||0),capacity:Math.max(5,Number(s.capacity)||5),speed:Math.max(0,Number(s.speed)||0),tool:Math.max(0,Number(s.tool)||0),workers:Math.max(0,Number(s.workers)||0),highlands:Boolean(s.highlands)}}}catch{/* Storage can be unavailable in private browsing. */}return{money:0,bag:0,products:0,capacity:5,speed:0,tool:0,workers:0,highlands:false}}
+  saveGame(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(this.save))}catch{/* Keep the game playable without persistence. */}}
+  mat(color:number,roughness=1,metalness=0){return new THREE.MeshStandardMaterial({color,roughness,metalness})}
+  box(parent:THREE.Object3D,size:[number,number,number],color:number,pos:[number,number,number],mat?:THREE.Material){const m=new THREE.Mesh(new THREE.BoxGeometry(...size),mat||this.mat(color));m.position.set(...pos);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
+  sphere(parent:THREE.Object3D,r:number,color:number,pos:[number,number,number],scale:[number,number,number]=[1,1,1]){const m=new THREE.Mesh(new THREE.SphereGeometry(r,16,12),this.mat(color));m.position.set(...pos);m.scale.set(...scale);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
+  group(parent:THREE.Object3D,pos:[number,number,number]=[0,0,0]){const g=new THREE.Group();g.position.set(...pos);parent.add(g);return g}
+  build3DWorld(){
+    this.world=new THREE.Scene();this.world.background=new THREE.Color(0x8dd1e8);this.world.fog=new THREE.Fog(0x8dd1e8,70,190);
+    this.camera=new THREE.PerspectiveCamera(62,1,.1,260);this.camera.position.set(0,5.2,9.5);
+    this.threeRenderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});this.threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));this.threeRenderer.shadowMap.enabled=true;this.threeRenderer.shadowMap.type=THREE.PCFSoftShadowMap;this.threeRenderer.outputColorSpace=THREE.SRGBColorSpace;this.threeRenderer.toneMapping=THREE.ACESFilmicToneMapping;this.threeRenderer.toneMappingExposure=1.15;this.root.prepend(this.threeRenderer.domElement);this.threeRenderer.domElement.className='w3d-canvas';
+    this.world.add(new THREE.HemisphereLight(0xcaf1ff,0x557243,2.15));const sun=new THREE.DirectionalLight(0xffe1a2,3.2);sun.position.set(-35,55,18);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-65;sun.shadow.camera.right=65;sun.shadow.camera.top=70;sun.shadow.camera.bottom=-70;this.world.add(sun);
+    const ground=new THREE.Mesh(new THREE.PlaneGeometry(240,240),this.mat(0x70aa4b));ground.rotation.x=-Math.PI/2;ground.position.set(0,-.22,-42);ground.receiveShadow=true;this.world.add(ground);
+    this.createPath();this.createRiver();this.createBridge();this.createMountains();this.createForest();this.createFlowers();
+    this.player=this.makeRanger();this.world.add(this.player);this.player.position.set(0,0,3);
+    this.addAnimal('bear',-2,-21,2);this.addAnimal('bear',9,-39,3);this.addAnimal('bear',-17,-57,4);
+    if(this.save.highlands){this.addAnimal('deer',4,-104,1);this.addAnimal('deer',-12,-118,1)}
+    const ring=new THREE.Mesh(new THREE.RingGeometry(1.3,1.65,32),new THREE.MeshBasicMaterial({color:0xffdd67,side:THREE.DoubleSide,transparent:true,opacity:.8}));ring.rotation.x=-Math.PI/2;ring.position.y=.08;this.world.add(ring);this.targetRing=ring;
+    this.createStations();
   }
-  distance(x:number,z:number){return Math.hypot(x-this.player.x,z-this.player.z)}
-  nearestAnimal(){return this.animals.filter(a=>a.alive).map(a=>({a,d:this.distance(a.x,a.z)})).sort((a,b)=>a.d-b.d)[0]}
-  nearestDrop(){return this.drops.map(d=>({d,dist:this.distance(d.x,d.z)})).sort((a,b)=>a.dist-b.dist)[0]}
-  station(which:'processor'|'market'|'upgrade'){return which==='processor'?{x:-205,z:-110}:which==='market'?{x:205,z:-110}:{x:0,z:-295}}
-  nearStation(which:'processor'|'market'|'upgrade',range:number){const s=this.station(which);return this.distance(s.x,s.z)<range}
-  actionName(){
-    const drop=this.nearestDrop();if(drop&&drop.dist<125&&this.save.bag<this.save.capacity)return'RAMASSER';
-    const animal=this.nearestAnimal();if(animal&&animal.d<265)return animal.a.kind==='deer'?'CHASSER LE CERF':'CHASSER';
-    if(this.nearStation('processor',150)&&this.save.bag>0)return'TRANSFORMER';
-    if(this.nearStation('market',150)&&this.save.products>0)return'VENDRE';
-    if(this.nearStation('upgrade',155))return'AMÉLIORER';
-    if(!this.save.highlands&&Math.abs(this.player.z-930)<180)return'OUVRIR LA ZONE';
-    return'EXPLORER';
+  createPath(){
+    const path=new THREE.Mesh(new THREE.PlaneGeometry(9,155),this.mat(0xc99455));path.rotation.x=-Math.PI/2;path.position.set(0,-.1,-42);path.receiveShadow=true;this.world.add(path);
+    const edge=new THREE.Mesh(new THREE.PlaneGeometry(11,155),this.mat(0x9c7242));edge.rotation.x=-Math.PI/2;edge.position.set(0,-.12,-42);this.world.add(edge);path.position.y=-.08;path.renderOrder=2;edge.renderOrder=1;
+    const path2=new THREE.Mesh(new THREE.PlaneGeometry(48,5),this.mat(0xc99455));path2.rotation.x=-Math.PI/2;path2.position.set(0,-.06,17);this.world.add(path2);
   }
+  createRiver(){
+    const water=new THREE.Mesh(new THREE.PlaneGeometry(8,200),new THREE.MeshStandardMaterial({color:0x38b8ce,roughness:.24,metalness:.08,transparent:true,opacity:.9}));water.rotation.x=-Math.PI/2;water.position.set(22,-.12,-43);this.world.add(water);
+    for(const x of [17.2,26.8]){const bank=new THREE.Mesh(new THREE.PlaneGeometry(1.8,200),this.mat(0xb39b62));bank.rotation.x=-Math.PI/2;bank.position.set(x,-.1,-43);this.world.add(bank)}
+    for(let i=0;i<30;i++){const z=-136+i*6.5;const rock=this.sphere(this.world,.45,0x98aa8b,[18.5+Math.sin(i*7)*.4,-.02,z],[1.7,.65,.7]);rock.rotation.y=i*.8}
+  }
+  createBridge(){const g=this.group(this.world,[22,.2,-15]);for(let i=0;i<9;i++)this.box(g,[8,.22,1.1],i%2?0x9d7043:0xb7824b,[0,0,-4+i]);for(const x of [-3.5,3.5])for(const z of [-4,4])this.box(g,[.24,1.5,.24],0x704b31,[x,.75,z]);for(const x of [-3.5,3.5])this.box(g,[.22,.22,8.5],0x81583a,[x,1.43,0])}
+  createMountains(){for(let i=0;i<11;i++){const h=18+(i*17%27),r=13+(i*13%15),m=new THREE.Mesh(new THREE.ConeGeometry(r,h,7),this.mat(i%2?0x748e76:0x90a982));m.position.set(-90+i*18,h/2-2,-133-(i%3)*11);m.castShadow=true;this.world.add(m);const snow=new THREE.Mesh(new THREE.ConeGeometry(r*.32,h*.34,7),this.mat(0xe9f0d8));snow.position.set(m.position.x,h*.82-2,m.position.z);this.world.add(snow)}}
+  createForest(){
+    let seed=931;const rand=()=>{seed=(seed*16807)%2147483647;return(seed&0x7fffffff)/2147483647};
+    for(let i=0;i<44;i++){const side=rand()<.5?-1:1,x=side*(14+rand()*48),z=11-rand()*140;if(Math.abs(x-22)<8)continue;this.addTree(x,z,.7+rand()*.9,rand()>.58)}
+    for(const side of [-1,1])for(let i=0;i<12;i++)this.addTree(side*(66+rand()*23),12-i*8,.8+rand()*.9,rand()>.4);
+  }
+  addTree(x:number,z:number,size:number,pine:boolean){const g=this.group(this.world,[x,0,z]);const trunk=this.mat(0x795036);const tm=new THREE.Mesh(new THREE.CylinderGeometry(.22*size,.38*size,2.4*size,7),trunk);tm.position.y=1.2*size;tm.castShadow=true;g.add(tm);if(pine){for(let i=0;i<3;i++){const crown=new THREE.Mesh(new THREE.ConeGeometry((2.1-i*.35)*size,(3.1-i*.2)*size,7),this.mat([0x397448,0x4b8750,0x609755][i]));crown.position.y=(3+i*1.3)*size;crown.castShadow=true;g.add(crown)}}else{this.sphere(g,1.65*size,0x57934b,[0,3.15*size,0],[1.15,1,.95]);this.sphere(g,1.05*size,0x79a94e,[-.8*size,3.5*size,.1],[1,1,.95]);this.sphere(g,.94*size,0x679d4c,[.9*size,3.7*size,-.1],[1.1,.9,1])}this.trees.push(g)}
+  createFlowers(){for(let i=0;i<34;i++){const x=Math.sin(i*82.19)*13,z=-70+((i*29)%120);if(Math.abs(x)<5)continue;const f=this.group(this.world,[x,.02,z]);const stem=this.box(f,[.045,.35,.045],0x527c3b,[0,.17,0]);stem.castShadow=false;this.sphere(f,.12,[0xffd675,0xfff3c7,0xf39163,0xb7a8e2][i%4],[0,.38,0],[1,.45,1])}}
+  makeRanger(){const g=new THREE.Group();const outfit=this.mat(0x397563),pants=this.mat(0x74563b),skin=this.mat(0xf0bc8a),boots=this.mat(0x4a3425),yellow=this.mat(0xe5ae48),hair=this.mat(0x593727);
+    const body=this.sphere(g,.48,0x397563,[0,1.55,0],[.82,1.08,.62]);body.material=outfit;
+    this.sphere(g,.38,0xf0bc8a,[0,2.42,-.03],[.83,1,.82]);this.sphere(g,.4,0x593727,[0,2.68,.02],[1,.55,.9]);this.sphere(g,.11,0xfff3d2,[-.13,2.44,-.34],[.55,.65,.35]);this.sphere(g,.11,0xfff3d2,[.13,2.44,-.34],[.55,.65,.35]);this.sphere(g,.052,0x263a32,[-.13,2.43,-.39]);this.sphere(g,.052,0x263a32,[.13,2.43,-.39]);
+    this.sphere(g,.42,0xd78d35,[0,1.65,.43],[.84,1,.45]);this.box(g,[.16,.58,.13],0xd0a44f,[-.12,1.65,.82]);this.box(g,[.16,.58,.13],0xd0a44f,[.12,1.65,.82]);
+    for(const side of [-1,1]){const arm=this.group(g,[side*.45,1.9,0]);const upper=this.sphere(arm,.17,0x397563,[side*.13,-.25,0],[.9,1.25,1]);upper.material=outfit;this.sphere(arm,.16,0xf0bc8a,[side*.22,-.52,-.02]);const leg=this.group(g,[side*.19,.76,0]);const thigh=this.sphere(leg,.18,0x74563b,[0,-.25,0],[1,1.35,1]);thigh.material=pants;this.sphere(leg,.19,0x4a3425,[0,-.55,-.07],[1.2,.55,1.6]);g.add(leg);this.legs.push(leg)}
+    g.userData.arms=Array.from(g.children).filter((c:any)=>c.isGroup).slice(0,2);g.userData.outfit=outfit;g.userData.materials={outfit,pants,skin,boots,yellow,hair};return g;
+  }
+  addAnimal(kind:AnimalKind,x:number,z:number,hp:number){const root=new THREE.Group(),legs:THREE.Group[]=[];const fur=this.mat(kind==='bear'?0x604536:0x9b754b),dark=this.mat(kind==='bear'?0x392920:0x634629);
+    this.sphere(root,kind==='bear'?.85:.62,kind==='bear'?0x604536:0x9b754b,[0,1,0],[kind==='bear'?1.1:1.3,.84,.78]);
+    const head=this.group(root,[0,1.62,-.47]);this.sphere(head,kind==='bear'?.56:.4,kind==='bear'?0x684d3a:0xa88152,[0,0,0],[1,.9,.95]);
+    if(kind==='bear'){for(const x0 of [-.36,.36]){this.sphere(head,.2,0x52392a,[x0,.42,0]);this.sphere(head,.1,0xe0bba1,[x0,.42,-.11])}this.sphere(head,.32,0x71523a,[0,-.14,-.37],[1,.62,.8]);this.sphere(head,.09,0x28231f,[0,-.07,-.68]);for(const x0 of [-.17,.17])this.sphere(head,.07,0x28231f,[x0,.12,-.44])}
+    else{this.sphere(head,.18,0xe4d2a8,[0,-.1,-.35],[.75,.7,1.3]);for(const x0 of [-.22,.22]){const antler=this.box(head,[.09,.86,.09],0xc9ae7c,[x0*1.4,.74,0]);antler.rotation.z=x0>0?-.25:.25;this.box(head,[.42,.08,.08],0xc9ae7c,[x0*1.65,1.02,0])}this.sphere(head,.07,0x22221d,[-.15,.04,-.37]);this.sphere(head,.07,0x22221d,[.15,.04,-.37])}
+    for(const sx of [-1,1])for(const sz of [-1,1]){const leg=this.group(root,[sx*(kind==='bear'?.55:.38),.63,sz*.43]);const shin=this.sphere(leg,.17,kind==='bear'?0x514033:0x80603e,[0,-.27,0],[.85,1.7,.95]);shin.material=fur;this.sphere(leg,.18,kind==='bear'?0x4e3c30:0x775839,[0,-.48,-.05],[1,.48,1.3]).material=dark;legs.push(leg)}
+    root.position.set(x,0,z);this.world.add(root);this.animals.push({kind,root,legs,hp,alive:true,phase:Math.random()*6,home:new THREE.Vector3(x,0,z)});
+  }
+  createCabin(x:number,z:number,type:'workshop'|'market'|'upgrade'){
+    const g=this.group(this.world,[x,0,z]),wall=type==='workshop'?0xf2d29b:type==='market'?0xf4e8cf:0xcbdc9b,roof=type==='workshop'?0x438160:type==='market'?0xc86d45:0x778e4f;
+    this.box(g,[7,3.4,5],wall,[0,1.8,0]);const roofMesh=new THREE.Mesh(new THREE.ConeGeometry(5.1,2.6,4),this.mat(roof));roofMesh.rotation.y=Math.PI/4;roofMesh.position.set(0,4.7,0);roofMesh.scale.z=.7;roofMesh.castShadow=true;g.add(roofMesh);
+    this.box(g,[1.3,2.35,.2],0x765033,[0,1.18,2.58]);this.sphere(g,.1,0xffd268,[.42,1.2,2.72],[.6,.6,.3]);
+    const sign=this.makeSign(type==='workshop'?'ATELIER':type==='market'?'MARCHÉ':'ÉQUIPEMENT',type==='market'?0xd87040:0x41805b);const board=new THREE.Mesh(new THREE.PlaneGeometry(5.4,1.05),new THREE.MeshBasicMaterial({map:sign,transparent:true}));board.position.set(0,3.35,2.64);g.add(board);
+    if(type==='workshop'){this.box(g,[.8,2,.8],0x88654a,[-2.5,4,0]);for(let i=0;i<3;i++){const puff=this.sphere(g,.38,0xe3e4dc,[-2.5+Math.sin(i)*.3,5.4+i*.35,Math.cos(i)*.2],[1,1,1]);puff.material.transparent=true;puff.material.opacity=.45}}
+    if(type==='market'){for(const x0 of [-2,0,2]){const fruit=this.sphere(g,.3,[0xe56d47,0xeca931,0x9bc04d][(x0+2)/2],[x0,2.7,2.96]);fruit.scale.setScalar(.65)}}
+    if(type==='upgrade'){const flag=this.box(g,[.15,3,.15],0x795639,[3.4,3.1,.3]);const pennant=new THREE.Mesh(new THREE.ConeGeometry(.6,1.3,3),this.mat(0xe2b84e));pennant.position.set(3.1,4.1,.3);pennant.rotation.z=-Math.PI/2;g.add(pennant);void flag}
+    return g;
+  }
+  createStations(){this.createCabin(-10,16,'workshop');this.createCabin(10,16,'market');this.createCabin(0,27,'upgrade');this.createGate()}
+  createGate(){const g=this.group(this.world,[0,0,-79]);for(const x of [-5,-2.5,0,2.5,5])this.box(g,[.35,5,.35],0x74583a,[x,2.5,0]);this.box(g,[12,.45,.5],0x8b673f,[0,5,0]);for(let i=-2;i<=2;i++)this.box(g,[1.6,.14,.2],0xbca06a,[i*2.4,2.6,.05]);this.makeSign('HAUTES TERRES',0x54834e,g,[0,4.1,-.34],5,1);this.gate=g}
+  makeSign(label:string,color:number,parent:THREE.Object3D=this.world,pos:[number,number,number]=[0,0,0],w=5,h=1){const c=document.createElement('canvas');c.width=512;c.height=128;const ctx=c.getContext('2d');if(!ctx)return new THREE.CanvasTexture(c);ctx.fillStyle=`#${color.toString(16).padStart(6,'0')}`;ctx.fillRect(4,4,504,120);ctx.fillStyle='#fff9dc';ctx.font='bold 52px Trebuchet MS, sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,256,66);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:tex,transparent:true}));mesh.position.set(...pos);parent.add(mesh);return tex}
+  buildTutorial(){this.steps=[
+    {title:'Rejoins l’ours',body:'Glisse le joystick pour avancer sur le sentier. Approche l’ours près du grand sapin.',target:new THREE.Vector3(-2,0,-21)},
+    {title:'Récupère la viande',body:'Approche l’animal et touche le bouton d’action pour chasser.',target:new THREE.Vector3(-2,0,-21),action:'CHASSER'},
+    {title:'Ramasse la caisse',body:'Approche la caisse déposée au sol et touche RAMASSER.',target:new THREE.Vector3(-2,0,-21),action:'RAMASSER'},
+    {title:'Transforme ta récolte',body:'Retourne à l’ATELIER près du camp et transforme la viande en produits.',target:new THREE.Vector3(-10,0,16),action:'TRANSFORMER'},
+    {title:'Vends au marché',body:'Traverse le camp jusqu’au MARCHÉ et vends tes produits.',target:new THREE.Vector3(10,0,16),action:'VENDRE'},
+    {title:'Améliore ton équipement',body:'Va à la cabane ÉQUIPEMENT et achète une amélioration.',target:new THREE.Vector3(0,0,27),action:'AMÉLIORER'},
+    {title:'Ouvre les Hautes Terres',body:'Tu connais la boucle ! Épargne 120 pièces, puis visite la porte au nord pour explorer un nouveau biome.',target:new THREE.Vector3(0,0,-79),action:'OUVRIR LA PORTE'},
+  ]}
+  resize3D(){if(!this.threeRenderer||!this.camera||!this.root)return;const w=Math.max(1,this.root.clientWidth),h=Math.max(1,this.root.clientHeight);this.camera.aspect=w/h;this.camera.fov=h>w?69:58;this.camera.updateProjectionMatrix();this.threeRenderer.setSize(w,h,false)}
+  stickDown(e:PointerEvent){e.preventDefault();this.stick.id=e.pointerId;this.joystick.setPointerCapture(e.pointerId);this.stickMove(e)}
+  stickMove(e:PointerEvent){if(e.pointerId!==this.stick.id)return;const r=this.joystick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=e.clientX-cx,dy=e.clientY-cy,len=Math.hypot(dx,dy)||1,k=Math.min(1,42/len);this.move.x=dx/42*k;this.move.z=dy/42*k;this.joystickKnob.style.transform=`translate(${this.move.x*35}px,${this.move.z*35}px)`}
+  stickUp(e:PointerEvent){if(e.pointerId!==this.stick.id)return;this.stick.id=-1;this.move.x=0;this.move.z=0;this.joystickKnob.style.transform='translate(0,0)'}
+  keyDown(e:KeyboardEvent){const key=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(key))e.preventDefault();if(key==='escape'||key==='backspace'){this.backToMenu();return}if(key==='e'||key===' ')this.performAction();this.held.add(key)}
+  backToMenu(){this.scene.start('theatre')}
+  nearestAnimal(){return this.animals.filter(a=>a.alive).map(a=>({animal:a,d:a.root.position.distanceTo(this.player.position)})).sort((a,b)=>a.d-b.d)[0]}
+  nearestDrop(){return this.drops.map(d=>({drop:d,d:d.root.position.distanceTo(this.player.position)})).sort((a,b)=>a.d-b.d)[0]}
+  nearestStation(){return ([{type:'workshop' as const,pos:new THREE.Vector3(-10,0,16),name:'ATELIER'},{type:'market' as const,pos:new THREE.Vector3(10,0,16),name:'MARCHÉ'},{type:'upgrade' as const,pos:new THREE.Vector3(0,0,27),name:'ÉQUIPEMENT'}]).map(s=>({...s,d:s.pos.distanceTo(this.player.position)})).sort((a,b)=>a.d-b.d)[0]}
+  actionName(){const drop=this.nearestDrop();if(drop&&drop.d<3.5)return'RAMASSER';const animal=this.nearestAnimal();if(animal&&animal.d<5)return animal.animal.kind==='bear'?'CHASSER':'CHASSER LE CERF';const s=this.nearestStation();if(s.d<6&&s.type==='workshop'&&this.save.bag>0)return'TRANSFORMER';if(s.d<6&&s.type==='market'&&this.save.products>0)return'VENDRE';if(s.d<6&&s.type==='upgrade')return'AMÉLIORER';if(this.save.money>=120&&this.player.position.z<-74&&!this.save.highlands)return'OUVRIR LA PORTE';return'EXPLORER'}
   performAction(){
-    const drop=this.nearestDrop();
-    if(drop&&drop.dist<125){if(this.save.bag>=this.save.capacity){this.showMessage('Sac plein. Retourne à l’atelier.');return}this.save.bag+=Math.min(drop.d.count,this.save.capacity-this.save.bag);this.drops.splice(this.drops.indexOf(drop.d),1);this.saveGame();this.showMessage(`Récolte ramassée · sac ${this.save.bag}/${this.save.capacity}`);return}
-    const target=this.nearestAnimal();
-    if(target&&target.d<265&&this.attackCooldown<=0){this.attackCooldown=.48;target.a.hp-=1+this.save.toolLevel;if(target.a.hp<=0){target.a.alive=false;const count=target.a.kind==='deer'?3:2;this.drops.push({x:target.a.x,z:target.a.z,count,phase:0});this.showMessage(`${target.a.kind==='deer'?'Cerf':'Ours'} calmé · ${count} pièces à ramasser`)}else this.showMessage('Bien visé ! Encore un coup.');return}
-    if(this.nearStation('processor',150)&&this.save.bag>0){const amount=this.save.bag;this.save.products+=amount;this.showMessage(`${amount} portions préparées à l’atelier`);this.save.bag=0;this.saveGame();return}
-    if(this.nearStation('market',150)&&this.save.products>0){const amount=this.save.products;const revenue=amount*(this.save.highlands?20:12);this.save.products=0;this.save.money+=revenue;this.saveGame();this.showMessage(`Vente réussie · +${revenue} pièces`);return}
-    if(this.nearStation('upgrade',155)){this.buyUpgrade();return}
-    if(!this.save.highlands&&Math.abs(this.player.z-930)<180){if(this.save.money<120){this.showMessage('Le pont demande 120 pièces. Vends quelques portions.');return}this.save.money-=120;this.save.highlands=true;this.spawnAnimals();this.saveGame();this.showMessage('NOUVELLE ZONE : LES HAUTES TERRES !');return}
-    this.showMessage('Explore, approche un animal ou retourne à ta base.');
+    const drop=this.nearestDrop();if(drop&&drop.d<3.5){const n=Math.min(drop.drop.amount,this.save.capacity-this.save.bag);if(n<=0){this.toast('Ton sac est plein. Retourne à l’atelier.');return}this.save.bag+=n;this.drops.splice(this.drops.indexOf(drop.drop),1);this.world.remove(drop.drop.root);this.saveGame();this.toast(`+${n} viande · sac ${this.save.bag}/${this.save.capacity}`);if(this.tutorialStep===2)this.setTutorial(3);return}
+    const a=this.nearestAnimal();if(a&&a.d<5&&this.attackCooldown<=0){this.attackCooldown=.55;a.animal.hp-=1+this.save.tool;if(a.animal.hp<=0){a.animal.alive=false;this.world.remove(a.animal.root);const amount=a.animal.kind==='deer'?3:2;this.drops.push({root:this.makeCrate(a.animal.root.position),amount});this.toast(`Récolte prête · ${amount} morceaux`);if(this.tutorialStep===1)this.setTutorial(2)}else{a.animal.root.scale.setScalar(.92);window.setTimeout(()=>a.animal.root.scale.setScalar(1),160);this.toast('Encore un coup !')}return}
+    const s=this.nearestStation();if(s.d<6&&s.type==='workshop'){if(!this.save.bag){this.toast('Apporte de la viande à transformer.');return}this.save.products+=this.save.bag;this.toast(`${this.save.bag} portions préparées à l’atelier.`);this.save.bag=0;this.saveGame();if(this.tutorialStep===3)this.setTutorial(4);return}
+    if(s.d<6&&s.type==='market'){if(!this.save.products){this.toast('Apporte tes produits au marché.');return}const amount=this.save.products,revenue=amount*(this.save.highlands?20:12);this.save.products=0;this.save.money+=revenue;this.saveGame();this.toast(`Vente réussie · +${revenue} pièces !`);if(this.tutorialStep===4)this.setTutorial(5);return}
+    if(s.d<6&&s.type==='upgrade'){this.buyUpgrade();if(this.tutorialStep===5&&this.save.speed>0)this.setTutorial(6);return}
+    if(this.player.position.z<-74&&!this.save.highlands){if(this.save.money<120){this.toast('La porte demande 120 pièces. Vends plus de portions.');return}this.save.money-=120;this.save.highlands=true;this.saveGame();this.addAnimal('deer',3,-105,1);this.addAnimal('deer',-11,-119,1);this.toast('NOUVEAU BIOME · HAUTES TERRES !');if(this.tutorialStep===6)this.setTutorial(7);return}
+    this.toast('Approche un animal, une caisse ou un bâtiment.');
   }
   buyUpgrade(){
-    if(this.save.capacity<14){const cost=60+this.save.capacity*12;if(this.save.money>=cost){this.save.money-=cost;this.save.capacity+=3;this.showMessage(`Sac agrandi · capacité ${this.save.capacity}`)}else this.showMessage(`Sac +3 : ${cost} pièces`)}
-    else if(this.save.speedLevel<3){const cost=90+this.save.speedLevel*65;if(this.save.money>=cost){this.save.money-=cost;this.save.speedLevel++;this.player.speed=170+this.save.speedLevel*25;this.showMessage('Bottes améliorées · déplacement plus rapide')}else this.showMessage(`Bottes rapides : ${cost} pièces`)}
-    else if(this.save.toolLevel<3){const cost=120+this.save.toolLevel*80;if(this.save.money>=cost){this.save.money-=cost;this.save.toolLevel++;this.showMessage('Outil amélioré · moins de coups pour chasser')}else this.showMessage(`Outil renforcé : ${cost} pièces`)}
-    else if(this.save.workers<3){const cost=180+this.save.workers*120;if(this.save.money>=cost){this.save.money-=cost;this.save.workers++;this.showMessage('Employé embauché · il vend les produits automatiquement')}else this.showMessage(`Employé : ${cost} pièces`)}
-    else this.showMessage('Toutes les améliorations sont achetées !');
-    this.saveGame();
+    let cost=0,label='';let improve=()=>{};
+    if(this.save.speed<3){cost=this.save.speed===0?20:40+this.save.speed*25;label='Bottes améliorées · tu cours plus vite !';improve=()=>this.save.speed++}
+    else if(this.save.capacity<14){cost=70+this.save.capacity*8;label='Sac agrandi · tu peux transporter plus !';improve=()=>this.save.capacity+=3}
+    else if(this.save.tool<3){cost=100+this.save.tool*60;label='Outil renforcé · chasse plus efficace !';improve=()=>this.save.tool++}
+    else if(this.save.workers<3){cost=160+this.save.workers*100;label='Employé embauché · il vend automatiquement !';improve=()=>this.save.workers++}
+    else{this.toast('Toutes les améliorations sont achetées !');return}
+    if(this.save.money<cost){this.toast(`Il te faut ${cost} pièces pour cette amélioration.`);return}improve();this.save.money-=cost;this.saveGame();this.toast(label)
   }
-
-  update(_time:number,delta:number){
-    const dt=Math.min(delta/1000,.04);this.anim+=dt;
-    if(this.attackCooldown>0)this.attackCooldown-=dt;if(this.messageTimer>0){this.messageTimer-=dt;if(this.messageTimer<=0)this.messageText.setText('')}
-    {
-      const k=this.held,keyboardX=(k.has('d')||k.has('arrowright')?1:0)-(k.has('a')||k.has('arrowleft')?1:0),keyboardZ=(k.has('w')||k.has('arrowup')?1:0)-(k.has('s')||k.has('arrowdown')?1:0);
-      let dx=this.stick.id!==null?this.stick.dx:keyboardX,dz=this.stick.id!==null?-this.stick.dy:keyboardZ;const len=Math.hypot(dx,dz);if(len>1){dx/=len;dz/=len}
-      const speed=this.player.speed,response=1-Math.exp(-dt*10);
-      this.player.vx=Phaser.Math.Linear(this.player.vx,dx*speed,response);this.player.vz=Phaser.Math.Linear(this.player.vz,dz*speed,response);
-      this.player.moving=Math.hypot(this.player.vx,this.player.vz)>18;this.player.anim+=dt*(this.player.moving?8+Math.hypot(this.player.vx,this.player.vz)/speed*8:1.5);
-      this.player.x=Phaser.Math.Clamp(this.player.x+this.player.vx*dt,-1000,1000);this.player.z=Phaser.Math.Clamp(this.player.z+this.player.vz*dt,-480,this.save.highlands?2450:900);
-      if(dx)this.player.face=dx<0?-1:1;
-      for(const a of this.animals){if(!a.alive)continue;a.bob+=dt*4;const px=this.player.x-a.x,pz=this.player.z-a.z,d=Math.hypot(px,pz);if(d<230){a.vx+=Math.sign(px)*24*dt;a.vz+=Math.sign(pz)*27*dt}else if(Math.sin(this.anim+a.bob)>0.985){a.vx=(Math.sin(this.anim*2+a.bob))*24;a.vz=(Math.cos(this.anim*2+a.bob))*20}a.x+=a.vx*dt;a.z+=a.vz*dt;a.vx*=Math.pow(.85,dt*60);a.vz*=Math.pow(.85,dt*60)}
-      for(const drop of this.drops)drop.phase+=dt*2;
-      if(this.save.workers>0&&this.save.products>0){this.autoSale+=dt;if(this.autoSale>9){this.autoSale=0;const sold=Math.min(this.save.products,this.save.workers);this.save.products-=sold;this.save.money+=sold*(this.save.highlands?20:12);this.saveGame();this.showMessage(`Tes employés ont vendu ${sold} portions.`)}}
-    }
-    this.background.setPosition(VW/2-this.player.x*.012,VH/2+this.player.z*.008).setTint(this.save.highlands&&this.player.z>1000?0xd8e8f1:0xffffff);
-    const bounce=this.player.moving?Math.abs(Math.sin(this.player.anim*2.5)):0;
-    this.hero.setPosition(VW/2+this.player.x*-.015,VH*.67+Math.sin(this.player.anim*2)*(this.player.moving?4:1)).setFlipX(this.player.face<0).setRotation(Math.sin(this.player.anim*1.4)*(this.player.moving ? .045 : .012)).setDisplaySize(112*(1+bounce*.035),168*(1-bounce*.035));
-    this.drawWorld();this.updateHud();
-  }
-
-  drawTree(x:number,y:number,size:number,pine:boolean){
-    const g=this.world,s=size;
-    g.fillStyle(0x2b291f,.28);g.fillEllipse(x,y+4,s*1.1,s*.24);
-    g.fillStyle(0x684b31,1);g.fillRoundedRect(x-s*.09,y-s*.65,s*.18,s*.72,s*.06);
-    const color=pine?0x315d37:0x54723a,light=pine?0x467947:0x78924a;
-    g.fillStyle(color,1);
-    if(pine){g.fillTriangle(x,y-s*1.9,x-s*.58,y-s*.35,x+s*.58,y-s*.35);g.fillTriangle(x,y-s*1.5,x-s*.48,y-s*.05,x+s*.48,y-s*.05)}
-    else{g.fillCircle(x,y-s*1.1,s*.53);g.fillCircle(x-s*.3,y-s*.88,s*.38);g.fillCircle(x+s*.3,y-s*.88,s*.4)}
-    g.fillStyle(light,.58);g.fillCircle(x-s*.2,y-s*1.25,s*.15);
-  }
-  drawBuilding(x:number,z:number,color:number,label:string,kind:'market'|'processor'|'upgrade'){
-    const q=this.project(x,z),g=this.world,s=q.scale;
-    if(q.y<-40||q.y>VH+120||q.x<-140||q.x>VW+140)return;
-    g.fillStyle(0x172719,.28);g.fillEllipse(q.x,q.y+4,110*s,24*s);
-    g.fillStyle(0xc89a60,1);g.fillRect(q.x-46*s,q.y-45*s,92*s,46*s);
-    g.fillStyle(color,1);g.fillTriangle(q.x-55*s,q.y-43*s,q.x,q.y-82*s,q.x+55*s,q.y-43*s);
-    g.lineStyle(2,0x5c432d,.9);g.strokeRect(q.x-46*s,q.y-45*s,92*s,46*s);
-    g.fillStyle(kind==='market'?0xffcf70:kind==='processor'?0x87bcb0:0xe4c778,1);g.fillRoundedRect(q.x-24*s,q.y-30*s,48*s,21*s,5*s);
-    g.fillStyle(0x413325,.9);g.fillRect(q.x-8*s,q.y-28*s,16*s,28*s);
-    g.fillStyle(0x263a28,.9);g.fillRoundedRect(q.x-62*s,q.y-103*s,124*s,17*s,7*s);
-    g.lineStyle(1,0xf1dcad,.75);g.strokeRoundedRect(q.x-62*s,q.y-103*s,124*s,17*s,7*s);
-    if(q.scale>.75)this.smallLabel(label,q.x,q.y-95*s);
-  }
-  smallLabel(label:string,x:number,y:number){const badge=label==='MARCHÉ'?0xffd37a:label==='ATELIER'?0x89c7ba:0xe5c679;this.world.fillStyle(0x23331f,.88);this.world.fillRoundedRect(x-57,y-12,114,22,7);this.world.lineStyle(1,0xe8d29d,.8);this.world.strokeRoundedRect(x-57,y-12,114,22,7);this.world.fillStyle(badge,1);this.world.fillCircle(x-45,y-1,3);}
-  drawWorld(){
-    const g=this.world;g.clear();
-    for(const tree of this.trees){const q=this.project(tree.x,tree.z);if(q.y>-70&&q.y<VH+100&&q.x>-100&&q.x<VW+100)this.drawTree(q.x,q.y,tree.size*q.scale,tree.pine)}
-    this.drawBuilding(-205,-110,0x6f8964,'ATELIER','processor');this.drawBuilding(205,-110,0x9a633b,'MARCHÉ','market');this.drawBuilding(0,-295,0x687d4a,'ÉQUIPEMENT','upgrade');
-    // Winding river, trail markers and animated grass keep the landscape in motion as the camera travels.
-    for(let i=0;i<9;i++){const z=120+i*180,q=this.project(575+Math.sin(this.anim*.35+i)*48,z);if(q.y>150&&q.y<VH){g.lineStyle(3+q.scale*10,0x55a7b2,.25);g.lineBetween(q.x-34*q.scale,q.y,q.x+34*q.scale,q.y+4*q.scale);g.lineStyle(1,0xd8e4a0,.4);g.lineBetween(q.x-18*q.scale,q.y-2*q.scale,q.x+24*q.scale,q.y-1*q.scale)}}
-    for(const a of this.animals){if(!a.alive){a.sprite?.setVisible(false);continue}const q=this.project(a.x,a.z);if(q.y<-70||q.y>VH+110||q.x<-100||q.x>VW+100){a.sprite?.setVisible(false);continue}g.fillStyle(0x202b1b,.24);g.fillEllipse(q.x,q.y+2,55*q.scale,14*q.scale);if(a.sprite)a.sprite.setVisible(true).setPosition(q.x,q.y-18*q.scale+Math.sin(a.bob)*2).setDisplaySize((a.kind==='deer'?74:88)*q.scale,(a.kind==='deer'?56:64)*q.scale).setDepth(Math.round(q.y+20))}
-    for(const drop of this.drops){const q=this.project(drop.x,drop.z),bob=Math.sin(drop.phase)*3;g.fillStyle(0x1e2a1c,.22);g.fillEllipse(q.x,q.y+4,34*q.scale,9*q.scale);g.fillStyle(0x815333,1);g.fillRoundedRect(q.x-18*q.scale,q.y-16*q.scale+bob,36*q.scale,22*q.scale,5*q.scale);g.lineStyle(2,0xe8c47b,1);g.strokeRoundedRect(q.x-18*q.scale,q.y-16*q.scale+bob,36*q.scale,22*q.scale,5*q.scale);g.fillStyle(0xffd77b,1);g.fillCircle(q.x,q.y-6*q.scale+bob,5*q.scale);g.fillStyle(0xfff1bd,1);g.fillCircle(q.x+8*q.scale,q.y-9*q.scale+bob,3*q.scale)}
-    this.drawGate();this.drawCustomers();this.drawInterface();
-  }
-  drawGate(){const g=this.world,z=930,q=this.project(0,z);if(q.y<145||q.y>VH)return;g.fillStyle(0x574331,.85);g.fillRect(q.x-58*q.scale,q.y-18*q.scale,116*q.scale,10*q.scale);for(let i=-2;i<=2;i++)g.fillRect(q.x+i*21*q.scale-3*q.scale,q.y-59*q.scale,6*q.scale,42*q.scale);g.fillStyle(this.save.highlands?0x7ec27d:0xe3bd73,.8);g.fillCircle(q.x,q.y-45*q.scale,8*q.scale);}
-  drawCustomers(){const g=this.world,q=this.project(205,-68);if(q.y<100||q.y>VH+70)return;for(let i=0;i<Math.min(4,2+this.save.workers);i++){const x=q.x-42*q.scale+i*26*q.scale,y=q.y+20*q.scale+Math.sin(this.anim*2+i)*2;g.fillStyle(0x1b2c1e,.25);g.fillEllipse(x,y+2,17*q.scale,5*q.scale);g.fillStyle([0xd88960,0x6f96b5,0xd8ba63,0x8e74a5][i],1);g.fillRoundedRect(x-7*q.scale,y-27*q.scale,14*q.scale,25*q.scale,6*q.scale);g.fillStyle(0xe9be91,1);g.fillCircle(x,y-32*q.scale,7*q.scale);g.fillStyle(0x514130,1);g.fillEllipse(x,y-38*q.scale,14*q.scale,6*q.scale)} }
-  drawInterface(){
-    const g=this.world,locked=!this.save.highlands;
-    g.fillStyle(0x183020,.82);g.fillRoundedRect(14,12,340,61,13);g.lineStyle(2,0xe5d29c,.9);g.strokeRoundedRect(14,12,340,61,13);
-    this.hud.setText(`WILD MEAT TYCOON   ·   ${this.save.money} pièces\nSAC ${this.save.bag}/${this.save.capacity}   ·   PRODUITS ${this.save.products}   ·   ${locked?'FORÊT':'HAUTES TERRES'}`);
-    g.fillStyle(0x17291e,.56);g.fillCircle(this.stick.x,this.stick.y,68);g.lineStyle(3,0xf2d69c,.92);g.strokeCircle(this.stick.x,this.stick.y,68);g.fillStyle(0x8e663f,.96);g.fillCircle(this.stick.x+this.stick.dx*32,this.stick.y+this.stick.dy*32,31);g.lineStyle(2,0xffe8bc,1);g.strokeCircle(this.stick.x+this.stick.dx*32,this.stick.y+this.stick.dy*32,31);
-    g.fillStyle(0x183020,.86);g.fillCircle(VW-94,VH-88,62);g.lineStyle(4,0xe7c878,1);g.strokeCircle(VW-94,VH-88,62);g.lineStyle(1,0xfff0c6,.55);g.strokeCircle(VW-94,VH-88,54);
-    g.fillStyle(0x183020,.85);g.fillRoundedRect(12,VH-57,128,42,11);g.lineStyle(2,0xe5d29c,.85);g.strokeRoundedRect(12,VH-57,128,42,11);
-    this.actionText.setPosition(VW-94,VH-88).setText(this.actionName());
-    this.messageText.setAlpha(this.messageTimer>0?1:0);
-    this.rotateShade.clear();this.rotateText.setVisible(false);
-    this.world.fillStyle(0x183020,.75);this.world.fillRoundedRect(15,18,78,31,10);this.world.lineStyle(2,0xe5d29c,.75);this.world.strokeRoundedRect(15,18,78,31,10);
-  }
-  updateHud(){
-    const label=this.actionName();if(label!==this.lastAction){this.lastAction=label;this.actionText.setText(label)}
-    const stations:[number,number][]=[[-205,-110],[205,-110],[0,-295]];
-    for(let i=0;i<stations.length;i++){const q=this.project(stations[i][0],stations[i][1]);this.stationLabels[i].setPosition(q.x,q.y-94*q.scale).setScale(Phaser.Math.Clamp(q.scale,.72,1.05)).setVisible(q.y>105&&q.y<VH-80&&q.x>70&&q.x<VW-70)}
-  }
+  makeCrate(position:THREE.Vector3){const g=new THREE.Group();const wood=this.mat(0x9c693b),meat=this.mat(0xba5542);this.box(g,[1,.5,.8],0x9c693b,[0,.25,0],wood);this.box(g,[.08,.55,.85],0xd4a45e,[0,.27,0]);this.sphere(g,.24,0xb64438,[0,.66,-.04],[1,.7,.8]).material=meat;g.position.copy(position);g.position.y=.04;this.world.add(g);return g}
+  setTutorial(step:number){this.tutorialStep=Math.min(step,this.steps.length);this.updateGuide();this.toast(step>=this.steps.length?'Tutoriel terminé ! La forêt est à toi.':'Nouvel objectif : '+this.steps[step].title)}
+  updateGuide(){const s=this.steps[this.tutorialStep];if(!s){this.guide.innerHTML='<div class="w3d-guide-head"><span>GUIDE D’AVENTURE</span><span>TERMINÉ</span></div><b>Tu es prêt·e à bâtir ton empire !</b><p>Explore, récolte, transforme, vends et développe le camp.</p>';this.targetRing.visible=false;return}this.guide.querySelector('[data-step]')!.textContent=`${this.tutorialStep+1} / ${this.steps.length}`;this.guide.querySelector('[data-guide-title]')!.textContent=s.title;this.guide.querySelector('[data-guide-body]')!.textContent=s.body;(this.guide.querySelector('[data-progress]') as HTMLElement).style.width=`${this.tutorialStep/this.steps.length*100}%`;if(s.target){this.targetRing.visible=true;this.targetRing.position.x=s.target.x;this.targetRing.position.z=s.target.z}}
+  updateHud(){this.root.querySelector('[data-money]')!.textContent=String(this.save.money);this.root.querySelector('[data-bag]')!.textContent=`${this.save.bag}/${this.save.capacity}`;this.root.querySelector('[data-products]')!.textContent=String(this.save.products);this.actionButton.querySelector('b')!.textContent=this.actionName();const step=this.steps[this.tutorialStep];if(step?.action&&this.actionName()===step.action)this.actionButton.classList.add('w3d-ready');else this.actionButton.classList.remove('w3d-ready')}
+  toast(message:string){this.message=message;this.messageUntil=this.elapsed+2.6;this.messageBox.textContent=message;this.messageBox.classList.add('w3d-show')}
+  movePlayer(dt:number){let x=this.move.x,z=this.move.z;if(this.held.has('a')||this.held.has('arrowleft'))x=-1;if(this.held.has('d')||this.held.has('arrowright'))x=1;if(this.held.has('w')||this.held.has('arrowup'))z=-1;if(this.held.has('s')||this.held.has('arrowdown'))z=1;const len=Math.hypot(x,z)||1;if(Math.hypot(x,z)>1){x/=len;z/=len}const speed=5.3+this.save.speed*.7;this.player.position.x=THREE.MathUtils.clamp(this.player.position.x+x*speed*dt,-68,68);this.player.position.z=THREE.MathUtils.clamp(this.player.position.z+z*speed*dt,-145,38);this.player.rotation.y=Math.atan2(-x,-z);const moving=Math.hypot(x,z)>.08;for(let i=0;i<this.legs.length;i++)this.legs[i].rotation.x=moving?Math.sin(this.elapsed*11+i*Math.PI)*.55:Math.sin(this.elapsed*2+i)*.025;const arms=this.player.userData.arms as THREE.Group[];for(let i=0;i<arms.length;i++)arms[i].rotation.x=moving?Math.sin(this.elapsed*11+i*Math.PI+Math.PI)*.38:0;this.player.position.y=moving?Math.abs(Math.sin(this.elapsed*11))*.05:Math.sin(this.elapsed*2)*.018;const desired=new THREE.Vector3(this.player.position.x*.4,3.8+this.player.position.y,this.player.position.z+8.5);this.camera.position.lerp(desired,1-Math.exp(-dt*3.5));this.camera.lookAt(this.player.position.x*.3,1.15,this.player.position.z-3.2)}
+  updateAnimals(dt:number){for(const a of this.animals){if(!a.alive)continue;a.phase+=dt*2;const t=a.phase;a.root.position.x=a.home.x+Math.sin(t*.42)*1.35;a.root.position.z=a.home.z+Math.cos(t*.33)*1.1;a.root.rotation.y=Math.sin(t*.42)*.24;a.root.position.y=Math.abs(Math.sin(t*2))*.045;for(let i=0;i<a.legs.length;i++)a.legs[i].rotation.x=Math.sin(t*2+i*Math.PI)*.08}}
+  updateQuest(){const s=this.steps[this.tutorialStep];if(!s)return;if(this.tutorialStep===0){const a=this.nearestAnimal();if(a&&a.d<6)this.setTutorial(1)}if(this.targetRing.visible){this.targetRing.rotation.z+=.009;const pulse=.92+Math.sin(this.elapsed*3)*.07;this.targetRing.scale.setScalar(pulse)}}
+  raf=0;animate=()=>{if(this.cleaned||!this.threeRenderer)return;this.raf=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);this.elapsed+=dt;if(this.attackCooldown>0)this.attackCooldown-=dt;this.movePlayer(dt);this.updateAnimals(dt);this.respawnTimer+=dt;if(this.respawnTimer>14&&this.animals.filter(a=>a.alive&&a.kind==='bear').length<4){this.respawnTimer=0;this.addAnimal('bear',(Math.random()-.5)*34,-45-Math.random()*65,2+this.save.tool)}this.updateQuest();if(this.save.workers&&this.save.products){this.autoSale+=dt;if(this.autoSale>8){this.autoSale=0;const sold=Math.min(this.save.products,this.save.workers);this.save.products-=sold;this.save.money+=sold*12;this.saveGame();this.toast(`Tes employés ont vendu ${sold} portions.`)}}if(this.messageUntil&&this.elapsed>this.messageUntil){this.messageUntil=0;this.messageBox.classList.remove('w3d-show')}if(this.elapsed-this.lastHud>.12){this.lastHud=this.elapsed;this.updateHud()}this.threeRenderer.render(this.world,this.camera)};
+  cleanup(){if(this.cleaned)return;this.cleaned=true;cancelAnimationFrame(this.raf);window.removeEventListener('keydown',this.onKeyDown);window.removeEventListener('keyup',this.onKeyUp);window.removeEventListener('resize',this.onResize);window.removeEventListener('orientationchange',this.onResize);document.removeEventListener('visibilitychange',this.onVisibility);this.threeRenderer?.dispose();this.world?.traverse(o=>{const m=o as THREE.Mesh;if(m.geometry)m.geometry.dispose();if(m.material){for(const mat of Array.isArray(m.material)?m.material:[m.material]){const texture=(mat as THREE.MeshStandardMaterial).map;if(texture)texture.dispose();mat.dispose()}}});this.root?.remove();if(this.game.canvas)this.game.canvas.style.display='block';document.body.dataset.wildState='menu';this.scale.setGameSize(480,854)}
+  update(){/* Three.js owns the Tycoon render loop. */}
 }
