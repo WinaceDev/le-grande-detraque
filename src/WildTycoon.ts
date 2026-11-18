@@ -17,11 +17,18 @@ export class WildTycoon extends Phaser.Scene {
   message='';messageTimer=0;attackCooldown=0;anim=0;autoSale=0;portrait=false;lastAction='';
 
   constructor(){super('wild')}
+  init(){this.scale.setGameSize(VW,VH)}
   preload(){
-    this.load.image('wild-bg',new URL('./assets/wild-clearing-wide.png',import.meta.url).href);
-    this.load.image(this.rangerTexture,new URL('./assets/wild-ranger.png',import.meta.url).href);
-    this.load.image(this.bearTexture,new URL('./assets/wild-bear.png',import.meta.url).href);
-    this.load.image('wild-deer',new URL('./assets/wild-deer.png',import.meta.url).href);
+    const loadingBackdrop=this.add.rectangle(VW/2,VH/2,VW,VH,0x223b2c).setDepth(1000);
+    const loading=this.add.text(VW/2,VH/2-30,'PRÉPARATION DE L’AVENTURE',{fontFamily:'Trebuchet MS',fontSize:'23px',fontStyle:'bold',color:'#fff1ce',stroke:'#263321',strokeThickness:5}).setOrigin(.5).setDepth(1001);
+    const bar=this.add.graphics().setDepth(1001);
+    const onProgress=(value:number)=>{bar.clear();bar.fillStyle(0x15251b,.8);bar.fillRoundedRect(VW/2-170,VH/2+10,340,20,10);bar.fillStyle(0xe6c878,1);bar.fillRoundedRect(VW/2-166,VH/2+14,332*value,12,6)};
+    this.load.on(Phaser.Loader.Events.PROGRESS,onProgress);
+    this.load.once(Phaser.Loader.Events.COMPLETE,()=>{this.load.off(Phaser.Loader.Events.PROGRESS,onProgress);loading.destroy();bar.destroy();loadingBackdrop.destroy()});
+    if(!this.textures.exists('wild-bg'))this.load.image('wild-bg',new URL('./assets/wild-clearing-wide.png',import.meta.url).href);
+    if(!this.textures.exists(this.rangerTexture))this.load.image(this.rangerTexture,new URL('./assets/wild-ranger.png',import.meta.url).href);
+    if(!this.textures.exists(this.bearTexture))this.load.image(this.bearTexture,new URL('./assets/wild-bear.png',import.meta.url).href);
+    if(!this.textures.exists('wild-deer'))this.load.image('wild-deer',new URL('./assets/wild-deer.png',import.meta.url).href);
   }
   create(){
     this.scale.setGameSize(VW,VH);this.loadSave();
@@ -45,7 +52,10 @@ export class WildTycoon extends Phaser.Scene {
     this.backText=this.add.text(53,34,'MENU',{fontFamily:'Trebuchet MS',fontSize:'11px',fontStyle:'bold',color:'#fff7df',align:'center',stroke:'#23331f',strokeThickness:3}).setOrigin(.5).setDepth(301).setScrollFactor(0);
     this.stickText=this.add.text(88,VH-176,'GLISSE',{fontFamily:'Trebuchet MS',fontSize:'12px',fontStyle:'bold',color:'#fff7df',align:'center',stroke:'#23331f',strokeThickness:3}).setOrigin(.5).setDepth(301).setScrollFactor(0);
     this.events.on('destroy',()=>this.saveGame());
-    this.scale.on('resize',()=>this.checkOrientation());window.addEventListener('orientationchange',()=>this.checkOrientation());this.checkOrientation();
+    const onOrientation=()=>this.checkOrientation();
+    this.scale.on('resize',onOrientation);window.addEventListener('orientationchange',onOrientation);
+    this.events.once('shutdown',()=>{this.scale.off('resize',onOrientation);window.removeEventListener('orientationchange',onOrientation)});
+    this.checkOrientation();
     this.showMessage('Explore la forêt. Approche un animal et touche CHASSER.');
   }
 
@@ -75,7 +85,7 @@ export class WildTycoon extends Phaser.Scene {
     const enter=()=>root.requestFullscreen?.().catch(()=>undefined);
     const screenOrientation=screen.orientation as unknown as {lock?:(value:'portrait'|'landscape')=>Promise<void>};
     const lock=()=>screenOrientation.lock?.(orientation).catch(()=>undefined);
-    const promise=enter();if(promise)void promise.then(lock);else void lock();
+    const promise=enter();if(promise)void promise.then(lock).catch(()=>lock());else void lock();
   }
   checkOrientation(){this.portrait=window.matchMedia('(orientation: portrait)').matches;this.rotateText.setVisible(this.portrait)}
   showMessage(message:string){this.message=message;this.messageTimer=2.3;if(this.messageText)this.messageText.setText(message)}

@@ -19,7 +19,17 @@ class Theatre extends Phaser.Scene {
   boss={x:343,y:350,hp:100,max:100,phase:1,clock:0,attack:0,flash:0,pose:0}; attacks:Attack[]=[]; shots:Attack[]=[];
   clock=0; levelIndex=0; muted=false; audio?:AudioContext; hint=0; buttons:{key:Control| 'play'|'wild'|'pause'|'sound'|'retry'|'title'|'continue'; x:number;y:number;r:number;label:string}[]=[];
   constructor(){super('theatre')}
-  preload(){this.load.image('miette',new URL('./assets/miette.png',import.meta.url).href);this.load.image(LEVELS[0].stage,LEVELS[0].stageUrl);this.load.image(LEVELS[0].portrait,LEVELS[0].bossUrl)}
+  preload(){
+    const loadingBackdrop=this.add.rectangle(W/2,H/2,W,H,0x180b13).setDepth(1000);
+    const loading=this.add.text(W/2,H/2-28,'OUVERTURE DU THÉÂTRE',{fontFamily:'Trebuchet MS',fontSize:'20px',fontStyle:'bold',color:'#f4e5c5',stroke:'#180b13',strokeThickness:5}).setOrigin(.5).setDepth(1001);
+    const bar=this.add.graphics().setDepth(1001);
+    const onProgress=(value:number)=>{bar.clear();bar.fillStyle(0x100910,.9);bar.fillRoundedRect(W/2-150,H/2+12,300,16,8);bar.fillStyle(0xd8b46f,1);bar.fillRoundedRect(W/2-146,H/2+16,292*value,8,4)};
+    this.load.on(Phaser.Loader.Events.PROGRESS,onProgress);
+    this.load.once(Phaser.Loader.Events.COMPLETE,()=>{this.load.off(Phaser.Loader.Events.PROGRESS,onProgress);loading.destroy();bar.destroy();loadingBackdrop.destroy()});
+    if(!this.textures.exists('miette'))this.load.image('miette',new URL('./assets/miette.png',import.meta.url).href);
+    if(!this.textures.exists(LEVELS[0].stage))this.load.image(LEVELS[0].stage,LEVELS[0].stageUrl);
+    if(!this.textures.exists(LEVELS[0].portrait))this.load.image(LEVELS[0].portrait,LEVELS[0].bossUrl)
+  }
   create(){this.scale.setGameSize(W,H);this.g=this.add.graphics();this.stageVisual=this.add.image(W/2,H/2,'stage').setDisplaySize(W,H).setDepth(-1);this.ui=this.add.graphics();this.mietteVisual=this.add.image(0,0,'miette').setOrigin(.5,1).setDisplaySize(86,103).setDepth(-.5);this.bossVisual=this.add.image(0,0,'minuit').setOrigin(.5,1).setDisplaySize(150,200).setDepth(-.5);this.keys=this.input.keyboard!;this.input.addPointer(4);this.scale.on('resize',()=>this.layout());this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>this.pointerDown(p));this.input.on('pointermove',(p:Phaser.Input.Pointer)=>this.pointerMove(p));this.input.on('pointerup',(p:Phaser.Input.Pointer)=>this.pointerUp(p));this.input.on('pointerupoutside',(p:Phaser.Input.Pointer)=>this.pointerUp(p));this.input.keyboard?.on('keydown', (e:KeyboardEvent)=>this.keyDown(e));this.input.keyboard?.on('keyup',(e:KeyboardEvent)=>this.keyUp(e));this.layout();this.events.on('destroy',()=>this.audio?.close())}
   layout(){this.cameras.main.setZoom(1);this.cameras.main.centerOn(W/2,H/2);this.cameras.main.setBounds(0,0,W,H)}
   keyDown(e:KeyboardEvent){
@@ -55,7 +65,7 @@ class Theatre extends Phaser.Scene {
     const request=document.documentElement.requestFullscreen?.();
     const screenOrientation=screen.orientation as unknown as {lock?:(value:'portrait'|'landscape')=>Promise<void>};
     const lock=()=>screenOrientation.lock?.(orientation).catch(()=>undefined);
-    if(request)void request.then(lock).catch(()=>undefined);else void lock();
+    if(request)void request.then(lock).catch(()=>lock());else void lock();
   }
   startWild(){this.unlockAudio();this.scale.setGameSize(854,480);this.requestDisplay('landscape');this.scene.start('wild')}
   start(){this.unlockAudio();this.scale.setGameSize(W,H);this.requestDisplay('portrait');this.mode='intro';this.held.clear();this.touchControls.clear();this.joystick.pointerId=null;this.joystick.dx=0;this.player.weapon=0;this.player.hp=5;this.configureLevel(0);this.clock=0;this.player.x=110;this.player.y=650;this.player.vx=0;this.player.vy=0;this.player.charge=0;this.time.delayedCall(2100,()=>{if(this.mode==='intro')this.mode='fight'})}
