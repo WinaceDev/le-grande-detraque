@@ -7,9 +7,9 @@ type Attack = { kind:string; x:number; y:number; vx:number; vy:number; life:numb
 type Control = 'left'|'right'|'jump'|'dash'|'fire'|'special'|'weapon';
 const WEAPON_NAMES=['AIGUILLE','ÉVENTAIL','MORTIER'];
 const LEVELS=[
-  {name:'LE GRAND THÉÂTRE',boss:'MONSIEUR MINUIT',stage:'stage',portrait:'minuit',stageUrl:new URL('./assets/theatre-bg.png',import.meta.url).href,bossUrl:new URL('./assets/monsieur-minuit.png',import.meta.url).href},
-  {name:'LES TOITS DE BELLEVILLE',boss:'MADAME VOLTIGE',stage:'roof',portrait:'voltige',stageUrl:new URL('./assets/belleville-rooftops.png',import.meta.url).href,bossUrl:new URL('./assets/madame-voltige.png',import.meta.url).href},
-  {name:'LA FONDERIE DES RÊVES',boss:'LE BARON ROUILLE',stage:'foundry',portrait:'baron',stageUrl:new URL('./assets/dream-foundry.png',import.meta.url).href,bossUrl:new URL('./assets/baron-rouille.png',import.meta.url).href},
+  {name:'LE GRAND THÉÂTRE',boss:'MONSIEUR MINUIT',stage:'stage',portrait:'minuit',stageUrl:new URL('./assets/theatre-bg-v2.png',import.meta.url).href,bossUrl:new URL('./assets/monsieur-minuit.png',import.meta.url).href},
+  {name:'LES TOITS DE BELLEVILLE',boss:'MADAME VOLTIGE',stage:'roof',portrait:'voltige',stageUrl:new URL('./assets/belleville-rooftops-v2.png',import.meta.url).href,bossUrl:new URL('./assets/madame-voltige.png',import.meta.url).href},
+  {name:'LA FONDERIE DES RÊVES',boss:'LE BARON ROUILLE',stage:'foundry',portrait:'baron',stageUrl:new URL('./assets/dream-foundry-v2.png',import.meta.url).href,bossUrl:new URL('./assets/baron-rouille.png',import.meta.url).href},
 ];
 
 class Theatre extends Phaser.Scene {
