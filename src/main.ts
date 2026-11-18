@@ -50,6 +50,7 @@ class Theatre extends Phaser.Scene {
   }
   keyUp(e:KeyboardEvent){const k=e.key.toLowerCase();if(k==='a'||k==='arrowleft')this.held.delete('left');if(k==='d'||k==='arrowright')this.held.delete('right');if(k===' '||k==='w'||k==='arrowup')this.held.delete('jump');if(k==='j'||k==='x')this.held.delete('fire');if(k==='shift'||k==='k')this.held.delete('dash')}
   pointerDown(p:Phaser.Input.Pointer){
+    if(!this.cameras?.main)return;
     const point=this.cameras.main.getWorldPoint(p.x,p.y),x=point.x,y=point.y;
     if(this.mode==='title'){
       if(y>815)this.muted=!this.muted;
@@ -65,7 +66,7 @@ class Theatre extends Phaser.Scene {
     const b=this.buttons.find(b=>Math.hypot(x-b.x,y-b.y)<b.r+18);if(!b)return;
     if(b.key==='pause')this.togglePause();else if(b.key==='weapon')this.cycleWeapon();else if(b.key==='left'||b.key==='right'||b.key==='fire')this.holdControl(p,b.key);else if(b.key==='jump')this.jump();else if(b.key==='dash')this.dash();else if(b.key==='special')this.special()
   }
-  pointerMove(p:Phaser.Input.Pointer){if(this.joystick.pointerId!==p.id)return;const point=this.cameras.main.getWorldPoint(p.x,p.y);this.joystick.dx=Phaser.Math.Clamp((point.x-this.joystick.baseX)/42,-1,1)}
+  pointerMove(p:Phaser.Input.Pointer){if(!this.cameras?.main||this.joystick.pointerId!==p.id)return;const point=this.cameras.main.getWorldPoint(p.x,p.y);this.joystick.dx=Phaser.Math.Clamp((point.x-this.joystick.baseX)/42,-1,1)}
   holdControl(p:Phaser.Input.Pointer,key:Control){this.touchControls.set(p.id,key);if(key==='fire'&&!this.held.has('fire')){this.fire();this.player.fire=this.weaponCooldown()}this.held.add(key)}
   pointerUp(p:Phaser.Input.Pointer){if(this.joystick.pointerId===p.id){this.joystick.pointerId=null;this.joystick.dx=0;return}const key=this.touchControls.get(p.id);if(!key)return;this.touchControls.delete(p.id);if(!Array.from(this.touchControls.values()).includes(key))this.held.delete(key)}
   cycleWeapon(){this.player.weapon=(this.player.weapon+1)%WEAPON_NAMES.length;this.playTone(330,.06)}
@@ -283,8 +284,9 @@ class Theatre extends Phaser.Scene {
     this.drawMietteArtwork(156,610,1,0);this.boss.x=334;this.boss.y=535;this.drawBossArtwork();
     this.ui.fillStyle(0x70412f,.98);this.ui.fillRoundedRect(30,660,420,66,12);this.ui.lineStyle(2,0xe0bc75,1);this.ui.strokeRoundedRect(30,660,420,66,12);
     this.text('LE GRAND DÉTRAQUÉ',240,682,15,'#fff0cf','Rye');this.text('PORTRAIT · COMBAT · 3 MONDES',240,706,10,'#e8d2a7');this.buttons.push({key:'play',x:240,y:693,r:200,label:'LE GRAND DÉTRAQUÉ'});
-    this.ui.fillStyle(0x42603b,.98);this.ui.fillRoundedRect(30,740,420,66,12);this.ui.lineStyle(2,0xd4e0a1,1);this.ui.strokeRoundedRect(30,740,420,66,12);
-    this.text('WILD MEAT TYCOON',240,762,15,'#fff0cf','Rye');this.text('PAYSAGE · EXPLORATION · COMMERCE',240,786,9,'#e3dba9');this.buttons.push({key:'wild',x:240,y:773,r:200,label:'WILD MEAT TYCOON'});
+    this.ui.fillGradientStyle(0x4e9b57,0x4e9b57,0x245d42,0x245d42,1);this.ui.fillRoundedRect(30,740,420,66,16);this.ui.lineStyle(2,0xd9e59c,1);this.ui.strokeRoundedRect(30,740,420,66,16);
+    this.ui.fillStyle(0xffd778,1);this.ui.fillCircle(414,756,10);this.ui.fillStyle(0x254b3a,1);this.ui.fillTriangle(43,792,67,752,91,792);this.ui.fillStyle(0x367150,1);this.ui.fillTriangle(58,794,83,760,108,794);this.ui.fillStyle(0x2c5a40,1);this.ui.fillTriangle(402,797,425,760,447,797);
+    this.text('WILD MEAT TYCOON',240,762,16,'#fff5cf','Trebuchet MS');this.text('EXPLORE · GAGNE · AGRANDIS TON COMMERCE',240,786,9,'#e7f1c1','Trebuchet MS');this.buttons.push({key:'wild',x:240,y:773,r:200,label:'WILD MEAT TYCOON'});
     this.text(this.muted?'SON : OFF':'SON : ON',240,831,10,'#d7bf95');this.buttons.push({key:'sound',x:240,y:831,r:90,label:'sound'});
   }
   drawIntro(){this.drawMietteArtwork(155,650,1,0);this.boss.x=337;this.boss.y=393;this.drawBossArtwork();this.panel();this.text('MESDAMES, MESSIEURS…',240,363,14,'#edcf90','Rye');this.text(`${LEVELS[this.levelIndex].boss} ENTRE EN SCÈNE`,240,410,16,'#f4e4c3','Rye');this.text(LEVELS[this.levelIndex].name,240,460,10,'#c8ae85');this.text('Préparez-vous !',240,513,12,'#e4c783')}
