@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { reportGameError } from './diagnostics';
 
 let VW=854,VH=480;const SAVE_KEY='wild-meat-tycoon-v1';
 type Animal={x:number;z:number;kind:'bear'|'deer';hp:number;alive:boolean;vx:number;vz:number;bob:number;sprite?:Phaser.GameObjects.Image};
@@ -19,6 +20,7 @@ export class WildTycoon extends Phaser.Scene {
   constructor(){super('wild')}
   init(){this.portrait=window.matchMedia('(orientation: portrait)').matches;VW=this.portrait?480:854;VH=this.portrait?854:480;this.scale.setGameSize(VW,VH)}
   preload(){
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR,(file:Phaser.Loader.File)=>reportGameError(`Une image ne charge pas : ${file.key}`));
     const loadingBackdrop=this.add.rectangle(VW/2,VH/2,VW,VH,0x223b2c).setDepth(1000);
     const loading=this.add.text(VW/2,VH/2-30,'PRÉPARATION DE L’AVENTURE',{fontFamily:'Trebuchet MS',fontSize:'23px',fontStyle:'bold',color:'#fff1ce',stroke:'#263321',strokeThickness:5}).setOrigin(.5).setDepth(1001);
     const bar=this.add.graphics().setDepth(1001);
@@ -57,6 +59,7 @@ export class WildTycoon extends Phaser.Scene {
     this.events.once('shutdown',()=>{this.scale.off('resize',onOrientation);window.removeEventListener('orientationchange',onOrientation)});
     this.checkOrientation();
     this.showMessage('Explore la forêt. Approche un animal et touche CHASSER.');
+    document.body.dataset.wildState='ready';
   }
 
   loadSave(){try{const raw=localStorage.getItem(SAVE_KEY);if(raw){const s=JSON.parse(raw) as Partial<Save>;this.save={...this.save,...s};this.save.money=Math.max(0,Number(this.save.money)||0);this.player.speed=170+this.save.speedLevel*25}}catch{/* Storage can be unavailable in private browsing. */}}

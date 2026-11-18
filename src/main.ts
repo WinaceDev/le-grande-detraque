@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import './style.css';
 import { WildTycoon } from './WildTycoon';
+import { installGameErrorReporter, reportGameError } from './diagnostics';
+
+installGameErrorReporter();
 
 const W = 480, H = 854;
 type Mode = 'title'|'intro'|'fight'|'pause'|'next'|'loading'|'win'|'lose';
@@ -80,7 +83,7 @@ class Theatre extends Phaser.Scene {
     }catch{/* Fullscreen is optional; it must never stop a game from starting. */lock()}
   }
   requestFullscreen(){try{const request=document.documentElement.requestFullscreen?.();if(request)void request.catch(()=>undefined)}catch{/* Fullscreen is optional; it must never stop a game from starting. */}}
-  startWild(){if(this.mode!=='title')return;this.unlockAudio();this.mode='loading';this.loadingWild=true;this.requestFullscreen();this.scene.start('wild')}
+  startWild(){if(this.mode!=='title')return;this.unlockAudio();document.body.dataset.wildState='loading';this.mode='loading';this.loadingWild=true;this.requestFullscreen();this.scene.start('wild');window.setTimeout(()=>{if(document.body.dataset.wildState!=='ready')reportGameError('La scène ne démarre pas. Le chargement est bloqué ou le navigateur a interrompu le jeu.')},8000)}
   start(){this.unlockAudio();this.scale.setGameSize(W,H);this.requestDisplay('portrait');this.mode='intro';this.held.clear();this.touchControls.clear();this.joystick.pointerId=null;this.joystick.dx=0;this.player.weapon=0;this.player.hp=5;this.configureLevel(0);this.clock=0;this.player.x=110;this.player.y=650;this.player.vx=0;this.player.vy=0;this.player.charge=0;this.time.delayedCall(2100,()=>{if(this.mode==='intro')this.mode='fight'})}
   beginNextLevel(){const oldIndex=this.levelIndex,index=oldIndex+1,level=LEVELS[index],needed=[] as string[];this.mode='loading';this.held.clear();this.touchControls.clear();this.joystick.pointerId=null;this.joystick.dx=0;if(!this.textures.exists(level.stage)){this.load.image(level.stage,level.stageUrl);needed.push(level.stage)}if(!this.textures.exists(level.portrait)){this.load.image(level.portrait,level.bossUrl);needed.push(level.portrait)}const finish=()=>{if(oldIndex>0){this.textures.remove(LEVELS[oldIndex].stage);this.textures.remove(LEVELS[oldIndex].portrait)}this.player.hp=Math.min(5,this.player.hp+1);this.configureLevel(index);this.player.x=110;this.player.y=650;this.player.vx=0;this.player.vy=0;this.mode='fight'};if(needed.length){this.load.once(Phaser.Loader.Events.COMPLETE,finish);this.load.start()}else finish()}
   reset(m:Mode){this.mode=m;if(m==='fight'||m==='title'){this.player.hp=5;this.player.weapon=0;this.configureLevel(0);this.attacks=[];this.shots=[];this.clock=0;this.player.x=110;this.player.y=650;this.player.vx=0;this.player.vy=0;this.player.charge=0}}
