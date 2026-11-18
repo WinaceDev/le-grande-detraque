@@ -79,7 +79,7 @@ export class WildTycoon extends Phaser.Scene {
   pointerMove(p:Phaser.Input.Pointer){if(this.stick.id!==p.id)return;const dx=(p.x-this.stick.x)/58,dy=(p.y-this.stick.y)/58,len=Math.hypot(dx,dy)||1,k=Math.max(1,len);this.stick.dx=dx/k;this.stick.dy=dy/k}
   pointerUp(p:Phaser.Input.Pointer){if(this.stick.id===p.id){this.stick.id=null;this.stick.dx=0;this.stick.dy=0}}
   keyDown(e:KeyboardEvent){const k=e.key.toLowerCase();if(k==='escape'||k==='backspace'){this.backToMenu();return}this.held.add(k);if(k==='e'||k===' '){e.preventDefault();this.performAction()}}
-  backToMenu(){this.saveGame();this.scale.setGameSize(480,854);this.requestDisplay('portrait');this.scene.start('theatre')}
+  backToMenu(){this.saveGame();document.body.classList.remove('wild-game');this.scale.setGameSize(480,854);this.requestDisplay('portrait');this.scene.start('theatre')}
   requestDisplay(orientation:'portrait'|'landscape'){
     const lock=()=>{
       try{
