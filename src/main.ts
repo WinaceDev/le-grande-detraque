@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import './style.css';
+import { WildTycoon } from './WildTycoon';
 
 const W = 480, H = 854;
 type Mode = 'title'|'intro'|'fight'|'pause'|'next'|'loading'|'win'|'lose';
@@ -16,13 +17,14 @@ class Theatre extends Phaser.Scene {
   mode:Mode='title'; g!:Phaser.GameObjects.Graphics; ui!:Phaser.GameObjects.Graphics; stageVisual!:Phaser.GameObjects.Image; mietteVisual!:Phaser.GameObjects.Image; bossVisual!:Phaser.GameObjects.Image; texts:Phaser.GameObjects.Text[]=[];
   held=new Set<Control>(); touchControls=new Map<number,Control>(); joystick={pointerId:null as number|null,baseX:82,baseY:777,dx:0}; keys!:Phaser.Input.Keyboard.KeyboardPlugin; player={x:115,y:650,vx:0,vy:0,hp:5,ground:true,invuln:0,dash:0,fire:0,charge:0,face:1,anim:0,weapon:0,recoil:0,land:0,coyote:0,jumpBuffer:0};
   boss={x:343,y:350,hp:100,max:100,phase:1,clock:0,attack:0,flash:0,pose:0}; attacks:Attack[]=[]; shots:Attack[]=[];
-  clock=0; levelIndex=0; muted=false; audio?:AudioContext; hint=0; buttons:{key:Control| 'play'|'pause'|'sound'|'retry'|'title'|'continue'; x:number;y:number;r:number;label:string}[]=[];
+  clock=0; levelIndex=0; muted=false; audio?:AudioContext; hint=0; buttons:{key:Control| 'play'|'wild'|'pause'|'sound'|'retry'|'title'|'continue'; x:number;y:number;r:number;label:string}[]=[];
   constructor(){super('theatre')}
   preload(){this.load.image('miette',new URL('./assets/miette.png',import.meta.url).href);this.load.image(LEVELS[0].stage,LEVELS[0].stageUrl);this.load.image(LEVELS[0].portrait,LEVELS[0].bossUrl)}
-  create(){this.g=this.add.graphics();this.stageVisual=this.add.image(W/2,H/2,'stage').setDisplaySize(W,H).setDepth(-1);this.ui=this.add.graphics();this.mietteVisual=this.add.image(0,0,'miette').setOrigin(.5,1).setDisplaySize(86,103).setDepth(-.5);this.bossVisual=this.add.image(0,0,'minuit').setOrigin(.5,1).setDisplaySize(150,200).setDepth(-.5);this.keys=this.input.keyboard!;this.input.addPointer(4);this.scale.on('resize',()=>this.layout());this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>this.pointerDown(p));this.input.on('pointermove',(p:Phaser.Input.Pointer)=>this.pointerMove(p));this.input.on('pointerup',(p:Phaser.Input.Pointer)=>this.pointerUp(p));this.input.on('pointerupoutside',(p:Phaser.Input.Pointer)=>this.pointerUp(p));this.input.keyboard?.on('keydown', (e:KeyboardEvent)=>this.keyDown(e));this.input.keyboard?.on('keyup',(e:KeyboardEvent)=>this.keyUp(e));this.layout();this.events.on('destroy',()=>this.audio?.close())}
+  create(){this.scale.setGameSize(W,H);this.g=this.add.graphics();this.stageVisual=this.add.image(W/2,H/2,'stage').setDisplaySize(W,H).setDepth(-1);this.ui=this.add.graphics();this.mietteVisual=this.add.image(0,0,'miette').setOrigin(.5,1).setDisplaySize(86,103).setDepth(-.5);this.bossVisual=this.add.image(0,0,'minuit').setOrigin(.5,1).setDisplaySize(150,200).setDepth(-.5);this.keys=this.input.keyboard!;this.input.addPointer(4);this.scale.on('resize',()=>this.layout());this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>this.pointerDown(p));this.input.on('pointermove',(p:Phaser.Input.Pointer)=>this.pointerMove(p));this.input.on('pointerup',(p:Phaser.Input.Pointer)=>this.pointerUp(p));this.input.on('pointerupoutside',(p:Phaser.Input.Pointer)=>this.pointerUp(p));this.input.keyboard?.on('keydown', (e:KeyboardEvent)=>this.keyDown(e));this.input.keyboard?.on('keyup',(e:KeyboardEvent)=>this.keyUp(e));this.layout();this.events.on('destroy',()=>this.audio?.close())}
   layout(){this.cameras.main.setZoom(1);this.cameras.main.centerOn(W/2,H/2);this.cameras.main.setBounds(0,0,W,H)}
   keyDown(e:KeyboardEvent){
     if(e.repeat)return;const k=e.key.toLowerCase();
+    if(k==='2'&&this.mode==='title'){this.startWild();return}
     if(k==='a'||k==='arrowleft')this.held.add('left');if(k==='d'||k==='arrowright')this.held.add('right');
     if(k===' '||k==='w'||k==='arrowup'){this.held.add('jump');this.jump()}
     if(k==='j'||k==='x'){this.held.add('fire');if(this.mode==='fight'){this.fire();this.player.fire=this.weaponCooldown()}}
@@ -34,7 +36,7 @@ class Theatre extends Phaser.Scene {
   keyUp(e:KeyboardEvent){const k=e.key.toLowerCase();if(k==='a'||k==='arrowleft')this.held.delete('left');if(k==='d'||k==='arrowright')this.held.delete('right');if(k===' '||k==='w'||k==='arrowup')this.held.delete('jump');if(k==='j'||k==='x')this.held.delete('fire');if(k==='shift'||k==='k')this.held.delete('dash')}
   pointerDown(p:Phaser.Input.Pointer){
     const point=this.cameras.main.getWorldPoint(p.x,p.y),x=point.x,y=point.y;
-    if(this.mode==='title'){if(y>795)this.muted=!this.muted;else if(y>700)this.start();return}
+    if(this.mode==='title'){if(y>815)this.muted=!this.muted;else if(y>746)this.startWild();else if(y>660)this.start();return}
     if(this.mode==='next'){if(y>610)this.beginNextLevel();return}
     if(this.mode==='pause'){if(y>450&&y<540){if(x<240)this.mode='fight';else this.reset('fight')}return}
     if(this.mode==='win'||this.mode==='lose'){if(y>620)this.reset(x<240?'title':'fight');return}
@@ -49,7 +51,14 @@ class Theatre extends Phaser.Scene {
   cycleWeapon(){this.player.weapon=(this.player.weapon+1)%WEAPON_NAMES.length;this.playTone(330,.06)}
   weaponCooldown(){return [0.23,0.38,0.82][this.player.weapon]}
   configureLevel(index:number){this.levelIndex=Phaser.Math.Clamp(index,0,LEVELS.length-1);const level=LEVELS[this.levelIndex];this.stageVisual.setTexture(level.stage);this.bossVisual.setTexture(level.portrait);this.boss.x=this.levelIndex===0?343:350;this.boss.y=350;this.boss.max=100+this.levelIndex*20;this.boss.hp=this.boss.max;this.boss.phase=1;this.boss.clock=0;this.boss.flash=0;this.boss.pose=0;this.boss.attack=1.25;this.attacks=[];this.shots=[]}
-  start(){this.unlockAudio();this.mode='intro';this.held.clear();this.touchControls.clear();this.joystick.pointerId=null;this.joystick.dx=0;this.player.weapon=0;this.player.hp=5;this.configureLevel(0);this.clock=0;this.player.x=110;this.player.y=650;this.player.vx=0;this.player.vy=0;this.player.charge=0;this.time.delayedCall(2100,()=>{if(this.mode==='intro')this.mode='fight'})}
+  requestDisplay(orientation:'portrait'|'landscape'){
+    const request=document.documentElement.requestFullscreen?.();
+    const screenOrientation=screen.orientation as unknown as {lock?:(value:'portrait'|'landscape')=>Promise<void>};
+    const lock=()=>screenOrientation.lock?.(orientation).catch(()=>undefined);
+    if(request)void request.then(lock).catch(()=>undefined);else void lock();
+  }
+  startWild(){this.unlockAudio();this.scale.setGameSize(854,480);this.requestDisplay('landscape');this.scene.start('wild')}
+  start(){this.unlockAudio();this.scale.setGameSize(W,H);this.requestDisplay('portrait');this.mode='intro';this.held.clear();this.touchControls.clear();this.joystick.pointerId=null;this.joystick.dx=0;this.player.weapon=0;this.player.hp=5;this.configureLevel(0);this.clock=0;this.player.x=110;this.player.y=650;this.player.vx=0;this.player.vy=0;this.player.charge=0;this.time.delayedCall(2100,()=>{if(this.mode==='intro')this.mode='fight'})}
   beginNextLevel(){const oldIndex=this.levelIndex,index=oldIndex+1,level=LEVELS[index],needed=[] as string[];this.mode='loading';this.held.clear();this.touchControls.clear();this.joystick.pointerId=null;this.joystick.dx=0;if(!this.textures.exists(level.stage)){this.load.image(level.stage,level.stageUrl);needed.push(level.stage)}if(!this.textures.exists(level.portrait)){this.load.image(level.portrait,level.bossUrl);needed.push(level.portrait)}const finish=()=>{if(oldIndex>0){this.textures.remove(LEVELS[oldIndex].stage);this.textures.remove(LEVELS[oldIndex].portrait)}this.player.hp=Math.min(5,this.player.hp+1);this.configureLevel(index);this.player.x=110;this.player.y=650;this.player.vx=0;this.player.vy=0;this.mode='fight'};if(needed.length){this.load.once(Phaser.Loader.Events.COMPLETE,finish);this.load.start()}else finish()}
   reset(m:Mode){this.mode=m;if(m==='fight'||m==='title'){this.player.hp=5;this.player.weapon=0;this.configureLevel(0);this.attacks=[];this.shots=[];this.clock=0;this.player.x=110;this.player.y=650;this.player.vx=0;this.player.vy=0;this.player.charge=0}}
   togglePause(){if(this.mode==='fight')this.mode='pause';else if(this.mode==='pause')this.mode='fight'}
@@ -241,11 +250,20 @@ class Theatre extends Phaser.Scene {
     this.text(label,x,y,size,ready?'#fff0bf':'#fff0d2');this.buttons.push({key,x,y,r,label})
   }
   panel(){this.ui.fillStyle(0x100910,.83);this.ui.fillRect(0,0,W,H);this.ui.lineStyle(2,0xd0aa67,1);this.ui.strokeRoundedRect(38,265,404,310,12);this.ui.lineStyle(1,0xd0aa67,.5);this.ui.strokeRoundedRect(47,274,386,292,8)}
-  drawTitle(){this.panel();this.text('LE GRAND',240,320,20,'#d6ae6c','Rye');this.text('DÉTRAQUÉ',240,363,36,'#f1dfbd','Rye');this.text('UNE CAMPAGNE · 3 MONDES · 3 BOSS',240,408,11,'#d7bd8c');this.text('THÉÂTRE · TOITS DE PARIS · FONDERIE',240,445,9,'#bb8c58');this.drawMietteArtwork(156,626,1,0);this.boss.x=334;this.boss.y=555;this.drawBossArtwork();this.text('UNE REVUE À TOMBER DE HAUT',240,696,10,'#d3bd91');this.ui.fillStyle(0x9b633d,1);this.ui.fillRoundedRect(100,730,280,54,8);this.ui.lineStyle(2,0xe0bc75,1);this.ui.strokeRoundedRect(100,730,280,54,8);this.text('ENTRER EN SCÈNE',240,757,14,'#f6e6c7');this.buttons.push({key:'play',x:240,y:757,r:160,label:'PLAY'});this.text(this.muted?'SON : OFF':'SON : ON',240,809,10,'#d7bf95');this.buttons.push({key:'sound',x:240,y:809,r:80,label:'sound'})}
+  drawTitle(){
+    this.panel();this.text('LE GRAND',240,300,20,'#d6ae6c','Rye');this.text('DÉTRAQUÉ',240,342,36,'#f1dfbd','Rye');
+    this.text('CHOISIS TON AVENTURE',240,390,12,'#d7bd8c');this.text('3 MONDES · 3 BOSS · COMBAT DE SCÈNE',240,422,9,'#bb8c58');
+    this.drawMietteArtwork(156,610,1,0);this.boss.x=334;this.boss.y=535;this.drawBossArtwork();
+    this.ui.fillStyle(0x70412f,.98);this.ui.fillRoundedRect(30,660,420,66,12);this.ui.lineStyle(2,0xe0bc75,1);this.ui.strokeRoundedRect(30,660,420,66,12);
+    this.text('LE GRAND DÉTRAQUÉ',240,682,15,'#fff0cf','Rye');this.text('PORTRAIT · COMBAT · 3 MONDES',240,706,10,'#e8d2a7');this.buttons.push({key:'play',x:240,y:693,r:200,label:'LE GRAND DÉTRAQUÉ'});
+    this.ui.fillStyle(0x42603b,.98);this.ui.fillRoundedRect(30,740,420,66,12);this.ui.lineStyle(2,0xd4e0a1,1);this.ui.strokeRoundedRect(30,740,420,66,12);
+    this.text('WILD MEAT TYCOON',240,762,15,'#fff0cf','Rye');this.text('PAYSAGE · EXPLORATION · COMMERCE',240,786,9,'#e3dba9');this.buttons.push({key:'wild',x:240,y:773,r:200,label:'WILD MEAT TYCOON'});
+    this.text(this.muted?'SON : OFF':'SON : ON',240,831,10,'#d7bf95');this.buttons.push({key:'sound',x:240,y:831,r:90,label:'sound'});
+  }
   drawIntro(){this.drawMietteArtwork(155,650,1,0);this.boss.x=337;this.boss.y=393;this.drawBossArtwork();this.panel();this.text('MESDAMES, MESSIEURS…',240,363,14,'#edcf90','Rye');this.text(`${LEVELS[this.levelIndex].boss} ENTRE EN SCÈNE`,240,410,16,'#f4e4c3','Rye');this.text(LEVELS[this.levelIndex].name,240,460,10,'#c8ae85');this.text('Préparez-vous !',240,513,12,'#e4c783')}
   drawNext(){const next=LEVELS[this.levelIndex+1];this.panel();this.text('LE SPECTACLE CONTINUE',240,340,22,'#e9d3a5','Rye');this.text(`MONDE ${this.levelIndex+2} · ${next.name}`,240,405,13,'#e4c783');this.text(`PROCHAIN BOSS : ${next.boss}`,240,453,12,'#cbb289');this.text('MIETTE RÉCUPÈRE UN CŒUR',240,499,10,'#cbb289');this.ui.fillStyle(0x855437,1);this.ui.fillRoundedRect(118,638,244,58,8);this.ui.lineStyle(2,0xe0bc75,1);this.ui.strokeRoundedRect(118,638,244,58,8);this.text('TOUCHER POUR CONTINUER',240,667,11,'#f6e6c7')}
   drawLoading(){this.panel();this.text('CHANGEMENT DE DÉCOR…',240,401,18,'#e9d3a5','Rye');this.text('MIETTE ENTRE EN SCÈNE',240,453,11,'#cbb289')}
   drawPause(){this.panel();this.text('ENTRACTE',240,342,27,'#e9d3a5','Rye');this.text('Reprenez le spectacle ?',240,400,12);this.ui.fillStyle(0x694332,1);this.ui.fillRoundedRect(73,465,145,58,7);this.ui.fillRoundedRect(262,465,145,58,7);this.text('REPRENDRE',145,494,11);this.text('RECOMMENCER',334,494,10);this.buttons.push({key:'pause',x:145,y:494,r:74,label:'resume'},{key:'retry',x:334,y:494,r:74,label:'restart'})}
   drawResult(){this.panel();const win=this.mode==='win';this.text(win?'CAMPAGNE TERMINÉE !':'À LA PROCHAINE, MIETTE.',240,352,win?21:19,'#e9d3a5','Rye');this.text(win?'LES TROIS MONDES SONT LIBRES.':`${LEVELS[this.levelIndex].boss} A GAGNÉ CE ROUND.`,240,405,10,'#cbb289');this.drawMietteArtwork(185,580,1,0);if(win)this.text('★',294,547,34,'#e1b568','serif');this.ui.fillStyle(0x855437,1);this.ui.fillRoundedRect(65,650,155,55,7);this.ui.fillRoundedRect(259,650,155,55,7);this.text('TITRE',142,678,13);this.text('REJOUER',336,678,13);this.buttons.push({key:'title',x:142,y:678,r:78,label:'title'},{key:'retry',x:336,y:678,r:78,label:'retry'})}
 }
-new Phaser.Game({type:Phaser.AUTO,parent:'game',backgroundColor:'#180b13',scale:{mode:Phaser.Scale.FIT,width:W,height:H,autoCenter:Phaser.Scale.CENTER_BOTH},render:{antialias:true,pixelArt:false,roundPixels:true},scene:[Theatre],input:{activePointers:5},fps:{target:60,forceSetTimeOut:true}});
+new Phaser.Game({type:Phaser.AUTO,parent:'game',backgroundColor:'#180b13',scale:{mode:Phaser.Scale.FIT,width:W,height:H,autoCenter:Phaser.Scale.CENTER_BOTH},render:{antialias:true,pixelArt:false,roundPixels:true},scene:[Theatre,WildTycoon],input:{activePointers:5},fps:{target:60,forceSetTimeOut:true}});
