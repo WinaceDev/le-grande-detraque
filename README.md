@@ -3,9 +3,9 @@
 Deux jeux mobiles indépendants, réunis dans un écran de lancement :
 
 - **Le Grand Détraqué** — combat de boss en 2D, style théâtre 1930.
-- **Wild Meat Tycoon** — aventure en 3D à la troisième personne : explore la forêt, chasse, ramasse les ressources, transforme-les à l’atelier et vends-les pour développer ton camp.
+- **Wild Meat Tycoon** — aventure en 3D à la troisième personne : explore la forêt, chasse, ramasse la viande, cuisine des repas au feu, vends-les au marché et améliore ton camp.
 
-Wild Meat Tycoon comprend un monde forestier avec rivière, pont, camp, animaux et Hautes Terres à débloquer. Un guide d’objectifs accompagne la première boucle de jeu. Le joystick et le bouton d’action fonctionnent en portrait comme en paysage; le clavier fonctionne aussi sur ordinateur.
+Wild Meat Tycoon comprend un monde forestier avec rivière, pont, camp, animaux et Hautes Terres à débloquer. Une histoire à quatre chapitres guide la première partie. Le joystick déplace le personnage, un glissement sur le décor fait pivoter la caméra, et le bouton d’action sert à parler, chasser, cuisiner et vendre. WASD fonctionne aussi sur ordinateur.
 
 ## Développement
 
