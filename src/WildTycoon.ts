@@ -31,7 +31,7 @@ export class WildTycoon extends Phaser.Scene {
     if(!this.textures.exists('wild-deer'))this.load.image('wild-deer',new URL('./assets/wild-deer.png',import.meta.url).href);
   }
   create(){
-    this.scale.setGameSize(VW,VH);this.loadSave();
+    this.loadSave();
     this.background=this.add.image(VW/2,VH/2,'wild-bg').setDisplaySize(VW,VH).setDepth(-20);
     this.world=this.add.graphics().setScrollFactor(0).setDepth(5);
     this.hero=this.add.image(VW/2,352,this.rangerTexture).setOrigin(.5,.88).setDisplaySize(112,168).setDepth(180);
