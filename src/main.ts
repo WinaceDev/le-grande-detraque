@@ -69,7 +69,66 @@ class Theatre extends Phaser.Scene {
   }
   hit(){const p=this.player;p.hp--;p.invuln=1.25;p.vx=-p.face*210;p.vy=-180;p.land=.16;this.cameras.main.shake(110,.003);this.playTone(90,.14)}
   draw(){const g=this.g;g.clear();this.mietteVisual.setVisible(false);this.bossVisual.setVisible(false);this.drawStageArtwork();this.drawBossArtwork();this.drawPlayer(g);this.drawAttacks(g);this.drawShots(g);this.drawUI();if(this.mode==='title')this.drawTitle();if(this.mode==='intro')this.drawIntro();if(this.mode==='next')this.drawNext();if(this.mode==='loading')this.drawLoading();if(this.mode==='pause')this.drawPause();if(this.mode==='win'||this.mode==='lose')this.drawResult()}
-  drawStageArtwork(){const g=this.g;this.stageVisual.setPosition(W/2+Math.sin(this.clock*.12)*2,H/2);g.fillStyle(0x10080c,.12);g.fillRect(0,0,W,H);g.lineStyle(2,0xd9b46d,.48);g.lineBetween(0,650,W,650);for(let i=0;i<22;i++){const x=(i*79+Math.floor(this.clock*8)%480)%480,y=(i*131+Math.floor(this.clock*13)%854)%854;g.fillStyle(0xf5dfb8,.14);g.fillCircle(x,y,1.4)}}
+  drawStageArtwork(){
+    const g=this.g,t=this.clock;
+    this.stageVisual.setPosition(W/2+Math.sin(t*.12)*3,H/2+Math.sin(t*.24)*1.5);
+    g.fillStyle(0x10080c,.1);g.fillRect(0,0,W,H);
+    this.drawWorldLife(g,t);
+    g.lineStyle(2,0xd9b46d,.48);g.lineBetween(0,650,W,650);
+    for(let i=0;i<28;i++){
+      const x=(i*79+Math.floor(t*(5+i%4))%520+520)%520-20;
+      const y=(i*131+Math.floor(t*(8+i%3))%900+900)%900-20;
+      const twinkle=.1+((Math.sin(t*2+i*2.13)+1)*.08);
+      g.fillStyle(this.levelIndex===2?0xffb45e:0xf5dfb8,twinkle);g.fillCircle(x,y,1+(i%3)*.35);
+    }
+  }
+  drawWorldLife(g:Phaser.GameObjects.Graphics,t:number){
+    if(this.levelIndex===0){
+      // The theatre's footlights breathe while two warm spotlights drift across the curtain.
+      for(let i=0;i<2;i++){
+        const x=138+i*205+Math.sin(t*.34+i*2)*34,alpha=.035+((Math.sin(t*1.4+i)+1)*.018);
+        g.fillStyle(0xffd27c,alpha);g.fillTriangle(x-12,125,x+12,125,x+Math.sin(t*.5+i)*38,605);
+      }
+      for(let i=0;i<7;i++){
+        const pulse=.58+Math.sin(t*3.4+i*.8)*.2;
+        g.fillStyle(0xffd77e,pulse);g.fillCircle(28+i*70,637,4+Math.max(0,Math.sin(t*3.4+i*.8))*1.3);
+      }
+    }else if(this.levelIndex===1){
+      // Slow clouds cross the Belleville skyline; chimney steam curls upward.
+      for(let i=0;i<3;i++){
+        const x=((i*205+t*(7+i*2))%570)-55,y=93+i*58+Math.sin(t*.35+i)*5;
+        g.fillStyle(0xb4adc0,.13);g.fillEllipse(x,y,68,15);g.fillEllipse(x-15,y-5,28,13);g.fillEllipse(x+15,y-6,34,16);
+      }
+      for(let i=0;i<8;i++){
+        const life=(t*.18+i*.137)%1,x=37+(i%2)*410+Math.sin(t*1.7+i)*8+life*12,y=268-life*92;
+        g.fillStyle(0xd9d2dc,(1-life)*.18);g.fillCircle(x,y,2+life*5);
+      }
+      const airshipX=((t*14)%560)-40;
+      g.fillStyle(0x1a1d2b,.58);g.fillEllipse(airshipX,212,30,8);g.fillRoundedRect(airshipX-8,214,16,5,2);
+      g.lineStyle(1,0xd4a866,.55);g.lineBetween(airshipX-10,212,airshipX-15,210);g.lineBetween(airshipX+10,212,airshipX+15,210);
+    }else{
+      // The foundry breathes from its furnace; flywheels turn and hot cinders rise.
+      for(const [cx,cy,radius,direction] of [[36,374,30,1],[444,435,24,-1]] as const){
+        g.fillStyle(0x130e13,.6);g.fillCircle(cx,cy,radius+7);g.lineStyle(4,0xb37c43,.85);g.strokeCircle(cx,cy,radius);
+        g.lineStyle(2,0xe5b861,.8);
+        for(let spoke=0;spoke<8;spoke++){
+          const a=t*direction+spoke*Math.PI/4;
+          g.lineBetween(cx+Math.cos(a)*5,cy+Math.sin(a)*5,cx+Math.cos(a)*(radius-3),cy+Math.sin(a)*(radius-3));
+        }
+        g.fillStyle(0x34201c,1);g.fillCircle(cx,cy,5);
+      }
+      const glow=.09+((Math.sin(t*4)+1)*.045);
+      g.fillStyle(0xff6c2f,glow);g.fillEllipse(240,625,190,66);
+      for(let i=0;i<18;i++){
+        const life=(t*.38+i*.113)%1,x=90+((i*61)%300)+Math.sin(t*3+i)*10,y=625-life*360;
+        g.fillStyle(0xffb553,(1-life)*.72);g.fillCircle(x,y,1+((i*7)%3));
+      }
+      for(let i=0;i<2;i++){
+        const life=(t*.22+i*.5)%1,x=115+i*250+Math.sin(t*2+i)*8,y=600-life*190;
+        g.fillStyle(0xbcb2ad,(1-life)*.16);g.fillEllipse(x,y,13+life*13,22+life*22);
+      }
+    }
+  }
   drawMietteArtwork(x:number,y:number,face:number,bob:number){
     const p=this.player,moving=Math.abs(p.vx)>35,run=Math.sin(p.anim*3.7),airborne=!p.ground;
     // Pose changes are driven by gameplay state so the silhouette reads clearly on small screens.
