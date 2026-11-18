@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-const VW=854,VH=480,SAVE_KEY='wild-meat-tycoon-v1';
+let VW=854,VH=480;const SAVE_KEY='wild-meat-tycoon-v1';
 type Animal={x:number;z:number;kind:'bear'|'deer';hp:number;alive:boolean;vx:number;vz:number;bob:number;sprite?:Phaser.GameObjects.Image};
 type Drop={x:number;z:number;count:number;phase:number};
 type Save={money:number;bag:number;products:number;capacity:number;speedLevel:number;toolLevel:number;workers:number;highlands:boolean};
@@ -17,7 +17,7 @@ export class WildTycoon extends Phaser.Scene {
   message='';messageTimer=0;attackCooldown=0;anim=0;autoSale=0;portrait=false;lastAction='';
 
   constructor(){super('wild')}
-  init(){this.scale.setGameSize(VW,VH)}
+  init(){this.portrait=window.matchMedia('(orientation: portrait)').matches;VW=this.portrait?480:854;VH=this.portrait?854:480;this.scale.setGameSize(VW,VH)}
   preload(){
     const loadingBackdrop=this.add.rectangle(VW/2,VH/2,VW,VH,0x223b2c).setDepth(1000);
     const loading=this.add.text(VW/2,VH/2-30,'PRÉPARATION DE L’AVENTURE',{fontFamily:'Trebuchet MS',fontSize:'23px',fontStyle:'bold',color:'#fff1ce',stroke:'#263321',strokeThickness:5}).setOrigin(.5).setDepth(1001);
@@ -34,7 +34,7 @@ export class WildTycoon extends Phaser.Scene {
     this.loadSave();
     this.background=this.add.image(VW/2,VH/2,'wild-bg').setDisplaySize(VW,VH).setDepth(-20);
     this.world=this.add.graphics().setScrollFactor(0).setDepth(5);
-    this.hero=this.add.image(VW/2,352,this.rangerTexture).setOrigin(.5,.88).setDisplaySize(112,168).setDepth(180);
+    this.hero=this.add.image(VW/2,VH*.67,this.rangerTexture).setOrigin(.5,.88).setDisplaySize(112,168).setDepth(180);
     this.makeMap();this.spawnAnimals();
     this.keys=this.input.keyboard!;this.input.addPointer(4);
     this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>this.pointerDown(p));
@@ -79,7 +79,7 @@ export class WildTycoon extends Phaser.Scene {
   pointerMove(p:Phaser.Input.Pointer){if(this.stick.id!==p.id)return;const dx=(p.x-this.stick.x)/58,dy=(p.y-this.stick.y)/58,len=Math.hypot(dx,dy)||1,k=Math.max(1,len);this.stick.dx=dx/k;this.stick.dy=dy/k}
   pointerUp(p:Phaser.Input.Pointer){if(this.stick.id===p.id){this.stick.id=null;this.stick.dx=0;this.stick.dy=0}}
   keyDown(e:KeyboardEvent){const k=e.key.toLowerCase();if(k==='escape'||k==='backspace'){this.backToMenu();return}this.held.add(k);if(k==='e'||k===' '){e.preventDefault();this.performAction()}}
-  backToMenu(){this.saveGame();document.body.classList.remove('wild-game');this.scale.setGameSize(480,854);this.requestDisplay('portrait');this.scene.start('theatre')}
+  backToMenu(){this.saveGame();this.scale.setGameSize(480,854);this.requestDisplay('portrait');this.scene.start('theatre')}
   requestDisplay(orientation:'portrait'|'landscape'){
     const lock=()=>{
       try{
@@ -92,7 +92,18 @@ export class WildTycoon extends Phaser.Scene {
       if(request)void request.then(lock).catch(lock);else lock();
     }catch{/* Fullscreen is optional; it must never stop the game from starting. */lock()}
   }
-  checkOrientation(){this.portrait=window.matchMedia('(orientation: portrait)').matches;this.rotateText.setVisible(this.portrait)}
+  checkOrientation(){
+    const portrait=window.matchMedia('(orientation: portrait)').matches,width=portrait?480:854,height=portrait?854:480,changed=width!==VW||height!==VH;
+    this.portrait=portrait;if(!changed)return;VW=width;VH=height;
+    if(this.scale.gameSize.width!==VW||this.scale.gameSize.height!==VH)this.scale.setGameSize(VW,VH);
+    if(this.background)this.background.setPosition(VW/2-this.player.x*.012,VH/2+this.player.z*.008).setDisplaySize(VW,VH);
+    if(this.hero)this.hero.setPosition(VW/2+this.player.x*-.015,VH*.67);
+    if(this.messageText)this.messageText.setPosition(VW/2,VH-180);
+    if(this.actionText)this.actionText.setPosition(VW-94,VH-88);
+    if(this.stickText)this.stickText.setPosition(88,VH-176);
+    this.stick.x=88;this.stick.y=VH-88;
+    this.rotateText?.setVisible(false);
+  }
   showMessage(message:string){this.message=message;this.messageTimer=2.3;if(this.messageText)this.messageText.setText(message)}
 
   project(x:number,z:number){
@@ -136,7 +147,7 @@ export class WildTycoon extends Phaser.Scene {
   update(_time:number,delta:number){
     const dt=Math.min(delta/1000,.04);this.anim+=dt;
     if(this.attackCooldown>0)this.attackCooldown-=dt;if(this.messageTimer>0){this.messageTimer-=dt;if(this.messageTimer<=0)this.messageText.setText('')}
-    if(!this.portrait){
+    {
       const k=this.held,keyboardX=(k.has('d')||k.has('arrowright')?1:0)-(k.has('a')||k.has('arrowleft')?1:0),keyboardZ=(k.has('w')||k.has('arrowup')?1:0)-(k.has('s')||k.has('arrowdown')?1:0);
       let dx=this.stick.id!==null?this.stick.dx:keyboardX,dz=this.stick.id!==null?-this.stick.dy:keyboardZ;const len=Math.hypot(dx,dz);if(len>1){dx/=len;dz/=len}
       const speed=this.player.speed,response=1-Math.exp(-dt*10);
@@ -150,7 +161,7 @@ export class WildTycoon extends Phaser.Scene {
     }
     this.background.setPosition(VW/2-this.player.x*.012,VH/2+this.player.z*.008).setTint(this.save.highlands&&this.player.z>1000?0xd8e8f1:0xffffff);
     const bounce=this.player.moving?Math.abs(Math.sin(this.player.anim*2.5)):0;
-    this.hero.setPosition(VW/2+this.player.x*-.015,352+Math.sin(this.player.anim*2)*(this.player.moving?4:1)).setFlipX(this.player.face<0).setRotation(Math.sin(this.player.anim*1.4)*(this.player.moving ? .045 : .012)).setDisplaySize(112*(1+bounce*.035),168*(1-bounce*.035));
+    this.hero.setPosition(VW/2+this.player.x*-.015,VH*.67+Math.sin(this.player.anim*2)*(this.player.moving?4:1)).setFlipX(this.player.face<0).setRotation(Math.sin(this.player.anim*1.4)*(this.player.moving ? .045 : .012)).setDisplaySize(112*(1+bounce*.035),168*(1-bounce*.035));
     this.drawWorld();this.updateHud();
   }
 
@@ -199,12 +210,12 @@ export class WildTycoon extends Phaser.Scene {
     g.fillStyle(0x183020,.85);g.fillRoundedRect(12,VH-57,128,42,11);g.lineStyle(2,0xe5d29c,.85);g.strokeRoundedRect(12,VH-57,128,42,11);
     this.actionText.setPosition(VW-94,VH-88).setText(this.actionName());
     this.messageText.setAlpha(this.messageTimer>0?1:0);
-    this.rotateShade.clear();if(this.portrait){this.rotateShade.fillStyle(0x142017,.96);this.rotateShade.fillRect(0,0,VW,VH);this.rotateText.setVisible(true)}else this.rotateText.setVisible(false);
+    this.rotateShade.clear();this.rotateText.setVisible(false);
     this.world.fillStyle(0x183020,.75);this.world.fillRoundedRect(15,18,78,31,10);this.world.lineStyle(2,0xe5d29c,.75);this.world.strokeRoundedRect(15,18,78,31,10);
   }
   updateHud(){
     const label=this.actionName();if(label!==this.lastAction){this.lastAction=label;this.actionText.setText(label)}
     const stations:[number,number][]=[[-205,-110],[205,-110],[0,-295]];
-    for(let i=0;i<stations.length;i++){const q=this.project(stations[i][0],stations[i][1]);this.stationLabels[i].setPosition(q.x,q.y-94*q.scale).setScale(Phaser.Math.Clamp(q.scale,.72,1.05)).setVisible(!this.portrait&&q.y>105&&q.y<VH-80&&q.x>70&&q.x<VW-70)}
+    for(let i=0;i<stations.length;i++){const q=this.project(stations[i][0],stations[i][1]);this.stationLabels[i].setPosition(q.x,q.y-94*q.scale).setScale(Phaser.Math.Clamp(q.scale,.72,1.05)).setVisible(q.y>105&&q.y<VH-80&&q.x>70&&q.x<VW-70)}
   }
 }
