@@ -62,10 +62,16 @@ class Theatre extends Phaser.Scene {
   weaponCooldown(){return [0.23,0.38,0.82][this.player.weapon]}
   configureLevel(index:number){this.levelIndex=Phaser.Math.Clamp(index,0,LEVELS.length-1);const level=LEVELS[this.levelIndex];this.stageVisual.setTexture(level.stage);this.bossVisual.setTexture(level.portrait);this.boss.x=this.levelIndex===0?343:350;this.boss.y=350;this.boss.max=100+this.levelIndex*20;this.boss.hp=this.boss.max;this.boss.phase=1;this.boss.clock=0;this.boss.flash=0;this.boss.pose=0;this.boss.attack=1.25;this.attacks=[];this.shots=[]}
   requestDisplay(orientation:'portrait'|'landscape'){
-    const request=document.documentElement.requestFullscreen?.();
-    const screenOrientation=screen.orientation as unknown as {lock?:(value:'portrait'|'landscape')=>Promise<void>};
-    const lock=()=>screenOrientation.lock?.(orientation).catch(()=>undefined);
-    if(request)void request.then(lock).catch(()=>lock());else void lock();
+    const lock=()=>{
+      try{
+        const screenOrientation=screen.orientation as unknown as {lock?:(value:'portrait'|'landscape')=>Promise<void>};
+        const result=screenOrientation?.lock?.(orientation);if(result)void result.catch(()=>undefined);
+      }catch{/* Some mobile browsers reject orientation locks synchronously. */}
+    };
+    try{
+      const request=document.documentElement.requestFullscreen?.();
+      if(request)void request.then(lock).catch(lock);else lock();
+    }catch{/* Fullscreen is optional; it must never stop a game from starting. */lock()}
   }
   startWild(){this.unlockAudio();this.requestDisplay('landscape');this.scene.start('wild')}
   start(){this.unlockAudio();this.scale.setGameSize(W,H);this.requestDisplay('portrait');this.mode='intro';this.held.clear();this.touchControls.clear();this.joystick.pointerId=null;this.joystick.dx=0;this.player.weapon=0;this.player.hp=5;this.configureLevel(0);this.clock=0;this.player.x=110;this.player.y=650;this.player.vx=0;this.player.vy=0;this.player.charge=0;this.time.delayedCall(2100,()=>{if(this.mode==='intro')this.mode='fight'})}

@@ -81,11 +81,16 @@ export class WildTycoon extends Phaser.Scene {
   keyDown(e:KeyboardEvent){const k=e.key.toLowerCase();if(k==='escape'||k==='backspace'){this.backToMenu();return}this.held.add(k);if(k==='e'||k===' '){e.preventDefault();this.performAction()}}
   backToMenu(){this.saveGame();this.scale.setGameSize(480,854);this.requestDisplay('portrait');this.scene.start('theatre')}
   requestDisplay(orientation:'portrait'|'landscape'){
-    const root=document.documentElement;
-    const enter=()=>root.requestFullscreen?.().catch(()=>undefined);
-    const screenOrientation=screen.orientation as unknown as {lock?:(value:'portrait'|'landscape')=>Promise<void>};
-    const lock=()=>screenOrientation.lock?.(orientation).catch(()=>undefined);
-    const promise=enter();if(promise)void promise.then(lock).catch(()=>lock());else void lock();
+    const lock=()=>{
+      try{
+        const screenOrientation=screen.orientation as unknown as {lock?:(value:'portrait'|'landscape')=>Promise<void>};
+        const result=screenOrientation?.lock?.(orientation);if(result)void result.catch(()=>undefined);
+      }catch{/* Orientation locking is not available in every mobile browser. */}
+    };
+    try{
+      const request=document.documentElement.requestFullscreen?.();
+      if(request)void request.then(lock).catch(lock);else lock();
+    }catch{/* Fullscreen is optional; it must never stop the game from starting. */lock()}
   }
   checkOrientation(){this.portrait=window.matchMedia('(orientation: portrait)').matches;this.rotateText.setVisible(this.portrait)}
   showMessage(message:string){this.message=message;this.messageTimer=2.3;if(this.messageText)this.messageText.setText(message)}
